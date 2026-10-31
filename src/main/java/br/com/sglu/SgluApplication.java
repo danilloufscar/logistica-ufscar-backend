@@ -8,7 +8,7 @@ public class SgluApplication {
 
 	public static void main(String[] args) {
 		SpringApplication.run(SgluApplication.class, args);
-		System.out.println("Application Started");
+		System.out.println("---------------------------APPLICATION STARTED---------------------------");
 	}
 
 }

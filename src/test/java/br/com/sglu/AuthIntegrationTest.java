@@ -147,7 +147,7 @@ class AuthIntegrationTest {
 
     @RestController
     static class ProtectedEndpoints {
-        @GetMapping({"/api/pedidos", "/api/usuarios"})
+        @GetMapping("/api/pedidos")
         Map<String, String> resource() { return Map.of("status", "ok"); }
     }
 }

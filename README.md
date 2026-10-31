@@ -1,6 +1,6 @@
 # SGLU — Backend
 
-API Spring Boot 4.1.1 / Java 21. Este incremento implementa login, base de usuários, perfis ADMINISTRADOR/OPERADOR e criação controlada do primeiro Administrador.
+API Spring Boot 4.1.1 / Java 21. Implementa login, cadastro/listagem de usuários, perfis ADMINISTRADOR/OPERADOR e criação controlada do primeiro Administrador.
 
 ## Arquitetura
 
@@ -59,9 +59,49 @@ Credenciais incorretas: HTTP 401 com:
 
 Campos inválidos/JSON inválido retornam 400. Rotas internas recebem `Authorization: Bearer <token>`; token ausente, inválido ou expirado retorna 401, e perfil sem permissão retorna 403. Não são criadas sessões HTTP.
 
-As famílias `/api/usuarios`, `/api/estoque/ajustes` e `/api/relatorios` exigem ADMINISTRADOR. Demais rotas exigem ADMINISTRADOR ou OPERADOR, exceto o POST de login. **Esses cadastros e funcionalidades ainda não estão implementados**: as regras apenas preparam a autorização. O portal público será liberado junto à sua implementação. Swagger também está protegido nesta etapa.
+As famílias `/api/usuarios`, `/api/estoque/ajustes` e `/api/relatorios` exigem ADMINISTRADOR. Demais rotas exigem ADMINISTRADOR ou OPERADOR, exceto o POST de login. Cadastro/listagem de usuários estão implementados; estoque e relatórios têm somente regras de autorização preparadas. O portal público será liberado junto à sua implementação. Swagger também está protegido nesta etapa.
 
 O frontend existente pode usar seu proxy `/api` para o backend em `localhost:8080`; chamadas diretas de outra origem não têm CORS liberado. Tela de login, redirecionamento e logout no front são outra etapa. Logout local remove o token; não há refresh/revogação imediata neste escopo.
+
+## Cadastro e listagem de usuários — RF02
+
+Fluxo MVC: `UsuarioController → UsuarioService → UsuarioRepository`. Validação de entrada nos DTOs; normalização de e-mail, unicidade, codificação da senha e transações no serviço; restrição UNIQUE também no banco. A autorização é aplicada pela SecurityFilterChain existente.
+
+Ambos os endpoints exigem `Authorization: Bearer <token-de-administrador>`.
+
+`POST /api/usuarios`, corpo JSON:
+
+```json
+{
+  "nome": "Operador de teste",
+  "email": "operador.teste@example.com",
+  "senha": "SenhaLocal@123",
+  "perfil": "OPERADOR"
+}
+```
+
+Todos os campos são obrigatórios. Nome: até 120 caracteres; e-mail: válido, até 254 caracteres, único após normalização de espaços externos/caixa; perfil: exatamente `ADMINISTRADOR` ou `OPERADOR`, sem valores numéricos. Senha não vazia e até 72 bytes UTF-8 (limite BCrypt); seu conteúdo é preservado, inclusive espaços. Não foi acrescentado um tamanho mínimo de senha ao RF02, pois ele não é definido no enunciado. A política do Administrador de bootstrap permanece separada.
+
+Sucesso: **201 Created**, somente com os campos públicos:
+
+```json
+{"id":2,"nome":"Operador de teste","email":"operador.teste@example.com","perfil":"OPERADOR"}
+```
+
+O identificador acima é ilustrativo. O usuário recém-criado pode entrar pelo `POST /api/auth/login` com a senha inicial.
+
+`GET /api/usuarios`: **200 OK**, array JSON de usuários com os mesmos quatro campos, ordenado por nome e depois id. A listagem não expõe senha nem hash. Não há edição/exclusão de usuários nesta etapa.
+
+| Situação | HTTP | Código |
+|---|---|---|
+| Campos ausentes/inválidos ou senha acima de 72 bytes | 400 | DADOS_INVALIDOS |
+| JSON/perfil não interpretável, inclusive perfil numérico | 400 | JSON_INVALIDO |
+| E-mail já cadastrado | 409 | EMAIL_JA_CADASTRADO |
+| Conflito na restrição do banco, inclusive corrida após checagem prévia | 409 | CONFLITO_DADOS |
+| Sem token válido | 401 | NAO_AUTENTICADO |
+| Token de Operador | 403 | ACESSO_NEGADO |
+
+No Insomnia: autentique como Administrador, use seu Bearer token para cadastrar e listar, depois entre com o novo Operador. Com o token do Operador, GET e POST `/api/usuarios` devem retornar 403. Repetir o e-mail (mesmo mudando caixa/espaços externos) deve retornar 409. Campos inválidos devem retornar 400 sem criar usuário.
 
 ## Testes e cobertura
 
@@ -69,7 +109,9 @@ O frontend existente pode usar seu proxy `/api` para o backend em `localhost:808
 .\mvnw.cmd verify
 ```
 
-Os testes usam H2 em modo PostgreSQL, Flyway e credenciais fictícias exclusivas do profile `test`; não precisam do banco de desenvolvimento. Testam login real com BCrypt, contrato JWT, assinatura, expiração, autorização, validação de entrada e bootstrap idempotente. Testes de serviços usam Mockito. JaCoCo gera `target/site/jacoco/index.html` e exige ao menos 70% de cobertura de linhas no pacote `service`. H2 não substitui a validação de execução com PostgreSQL.
+Os testes usam H2 em modo PostgreSQL, Flyway e credenciais fictícias exclusivas do profile `test`; não precisam do banco de desenvolvimento. Cobrem login, JWT, autorização, bootstrap, cadastro dos dois perfis, login do usuário cadastrado, listagem sem segredos, validações, limite BCrypt em bytes e unicidade protegida também pelo banco. O cenário de corrida força a checagem prévia a não detectar a duplicidade e verifica a restrição real, sem depender de timing entre threads. Testes de serviços usam Mockito. JaCoCo gera `target/site/jacoco/index.html` e exige ao menos 70% de cobertura de linhas no pacote `service`.
+
+Para validar os testes de integração com PostgreSQL, use **uma base temporária exclusiva** e configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` e `SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver`. Execute `./mvnw -Dtest=AuthIntegrationTest,UsuarioIntegrationTest verify` (no PowerShell, use `.\mvnw.cmd` e coloque o argumento `-Dtest=...` entre aspas). Esses testes limpam a tabela de usuários da base configurada; nunca aponte para `sglu` ou para uma base com dados que precisam ser preservados. Remova essas variáveis após a validação para voltar ao H2 padrão.
 
 O workflow de CI executa `verify` em push/PR quando estas alterações forem publicadas. Proteção de branch deve ser configurada no GitHub pela equipe.
 

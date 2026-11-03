@@ -1,6 +1,6 @@
 # SGLU — Backend
 
-API Spring Boot 4.1.1 / Java 21. Implementa login, cadastro/listagem de usuários, perfis ADMINISTRADOR/OPERADOR e criação controlada do primeiro Administrador.
+API Spring Boot 4.1.1 / Java 21. Implementa login, cadastro/listagem de usuários, clientes e produtos, perfis ADMINISTRADOR/OPERADOR e criação controlada do primeiro Administrador.
 
 ## Arquitetura
 
@@ -103,6 +103,61 @@ O identificador acima é ilustrativo. O usuário recém-criado pode entrar pelo 
 
 No Insomnia: autentique como Administrador, use seu Bearer token para cadastrar e listar, depois entre com o novo Operador. Com o token do Operador, GET e POST `/api/usuarios` devem retornar 403. Repetir o e-mail (mesmo mudando caixa/espaços externos) deve retornar 409. Campos inválidos devem retornar 400 sem criar usuário.
 
+## Cadastro e listagem de clientes e produtos — RF03
+
+Fluxos MVC: `ClienteController → ClienteService → ClienteRepository` e `ProdutoController → ProdutoService → ProdutoRepository`. DTOs validam a entrada e definem o JSON de saída; serviços controlam transações; entidades representam os cadastros persistidos.
+
+As quatro operações permitem **ADMINISTRADOR e OPERADOR**, sempre com `Authorization: Bearer <token>` e, nos POSTs, `Content-Type: application/json`.
+
+| Método | Rota | Resultado |
+|---|---|---|
+| POST | `/api/clientes` | 201, cliente cadastrado |
+| GET | `/api/clientes` | 200, array de clientes |
+| POST | `/api/produtos` | 201, produto cadastrado |
+| GET | `/api/produtos` | 200, array de produtos |
+
+Corpo de `POST /api/clientes`:
+
+```json
+{"nome":"Cliente fictício","telefone":"(16) 99999-0000","endereco":"Rua Fictícia, 10"}
+```
+
+Resposta ilustrativa:
+
+```json
+{"id":1,"nome":"Cliente fictício","telefone":"(16) 99999-0000","endereco":"Rua Fictícia, 10"}
+```
+
+Corpo de `POST /api/produtos`:
+
+```json
+{"codigo":"PROD-001","nome":"Produto de teste","estoqueMinimo":5}
+```
+
+Resposta ilustrativa:
+
+```json
+{"id":1,"codigo":"PROD-001","nome":"Produto de teste","estoqueMinimo":5}
+```
+
+Todos os campos são obrigatórios. Campos textuais não aceitam somente espaços; espaços externos são removidos. Limites técnicos adotados: nome de cliente/produto com até 120 caracteres; telefone até 30; endereço textual até 500; código até 64. Esses limites e a normalização são decisões de implementação. O telefone preserva a formatação informada. Clientes e nomes de produtos podem se repetir; o **código do produto é único**, normalizado para maiúsculas (`prod-001` e `PROD-001` identificam o mesmo código).
+
+`estoqueMinimo` aceita inteiro de 0 a 2147483647. Valores negativos, ausentes, fracionários ou fora desse intervalo são rejeitados. Envie `2`, não `2.0`: a configuração JSON impede truncamento de números decimais para inteiros. Este campo é o limite de alerta; saldo e movimentações pertencem à Release 2.
+
+As listagens retornam os mesmos campos das respostas de cadastro, ordenadas por nome e depois id; sem registros retornam `[]`. Edição e exclusão não fazem parte desta etapa.
+
+| Situação | HTTP | Código |
+|---|---|---|
+| Campo obrigatório ausente/vazio, limite textual ou estoque negativo | 400 | DADOS_INVALIDOS |
+| JSON inválido ou estoque não interpretável como inteiro | 400 | JSON_INVALIDO |
+| Código já cadastrado | 409 | CODIGO_PRODUTO_JA_CADASTRADO |
+| Conflito detectado pela restrição do banco após a checagem prévia | 409 | CONFLITO_DADOS |
+| Token ausente, inválido ou expirado | 401 | NAO_AUTENTICADO |
+
+**Migração:** ao reiniciar o backend, Flyway aplica `V2__create_clientes_produtos.sql`, criando as duas tabelas, a unicidade do código e a restrição de estoque mínimo não negativo. A V1 e os usuários existentes são preservados. Não é necessário recriar o container ou apagar o volume.
+
+**Validação no Insomnia:** entre como Administrador, cadastre e liste um cliente e um produto com os exemplos acima. Repita com o token do Operador: ambas as operações devem funcionar. Repita `PROD-001` usando `prod-001`: espere 409. Envie estoque `-1` ou `1.5`, ou omita um campo obrigatório: espere 400 sem criação. Retire o token: espere 401. Reinicie a aplicação e liste novamente para conferir a persistência.
+
 ## Testes e cobertura
 
 ```powershell
@@ -111,7 +166,9 @@ No Insomnia: autentique como Administrador, use seu Bearer token para cadastrar 
 
 Os testes usam H2 em modo PostgreSQL, Flyway e credenciais fictícias exclusivas do profile `test`; não precisam do banco de desenvolvimento. Cobrem login, JWT, autorização, bootstrap, cadastro dos dois perfis, login do usuário cadastrado, listagem sem segredos, validações, limite BCrypt em bytes e unicidade protegida também pelo banco. O cenário de corrida força a checagem prévia a não detectar a duplicidade e verifica a restrição real, sem depender de timing entre threads. Testes de serviços usam Mockito. JaCoCo gera `target/site/jacoco/index.html` e exige ao menos 70% de cobertura de linhas no pacote `service`.
 
-Para validar os testes de integração com PostgreSQL, use **uma base temporária exclusiva** e configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` e `SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver`. Execute `./mvnw -Dtest=AuthIntegrationTest,UsuarioIntegrationTest verify` (no PowerShell, use `.\mvnw.cmd` e coloque o argumento `-Dtest=...` entre aspas). Esses testes limpam a tabela de usuários da base configurada; nunca aponte para `sglu` ou para uma base com dados que precisam ser preservados. Remova essas variáveis após a validação para voltar ao H2 padrão.
+Os testes de clientes/produtos cobrem ambos os perfis, validações, limites, ordenação, persistência, duplicidade e restrições reais do banco. A migração também é verificada sobre uma base H2 na versão V1 com usuário existente, comprovando sua preservação após a V2.
+
+Para validar os testes de integração com PostgreSQL, use **uma base temporária exclusiva** e configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` e `SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver`. Execute `./mvnw -Dtest=AuthIntegrationTest,UsuarioIntegrationTest,CadastrosIntegrationTest verify` (no PowerShell, use `.\mvnw.cmd` e coloque o argumento `-Dtest=...` entre aspas). Esses testes limpam as tabelas de usuários, clientes e produtos da base configurada; nunca aponte para `sglu` ou para uma base com dados que precisam ser preservados. Remova essas variáveis após a validação para voltar ao H2 padrão.
 
 O workflow de CI executa `verify` em push/PR quando estas alterações forem publicadas. Proteção de branch deve ser configurada no GitHub pela equipe.
 

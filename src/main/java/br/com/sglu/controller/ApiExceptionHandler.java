@@ -2,6 +2,7 @@ package br.com.sglu.controller;
 
 import br.com.sglu.dto.error.ApiError;
 import br.com.sglu.exception.EmailJaCadastradoException;
+import br.com.sglu.exception.CodigoProdutoJaCadastradoException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(CodigoProdutoJaCadastradoException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError productCodeAlreadyRegistered(CodigoProdutoJaCadastradoException exception) {
+        return new ApiError("CODIGO_PRODUTO_JA_CADASTRADO", exception.getMessage());
+    }
 
     @ExceptionHandler(EmailJaCadastradoException.class)
     @ResponseStatus(HttpStatus.CONFLICT)

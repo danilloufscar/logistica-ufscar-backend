@@ -68,7 +68,7 @@ class AuthIntegrationTest {
     void operadorPodeAcessarRotaInternaMasNaoAdministrativa() throws Exception {
         String token = login("operador@example.com", PASSWORD);
         assertThat(decoder.decode(token).getClaimAsString("perfil")).isEqualTo("OPERADOR");
-        mvc.perform(get("/api/pedidos").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        mvc.perform(get("/api/teste/protegido").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
         mvc.perform(get("/api/usuarios").header("Authorization", "Bearer " + token))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.codigo").value("ACESSO_NEGADO"));
     }
@@ -94,12 +94,12 @@ class AuthIntegrationTest {
 
     @Test
     void rejeitaTokenAusenteInvalidoExpiradoEDeOutroEmissor() throws Exception {
-        mvc.perform(get("/api/pedidos")).andExpect(status().isUnauthorized())
+        mvc.perform(get("/api/teste/protegido")).andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.codigo").value("NAO_AUTENTICADO"));
         for (String token : new String[]{"token-invalido",
                 signedToken("sglu-backend", Instant.now().minusSeconds(60)),
                 signedToken("outro-emissor", Instant.now().plusSeconds(3600))}) {
-            mvc.perform(get("/api/pedidos").header("Authorization", "Bearer " + token))
+            mvc.perform(get("/api/teste/protegido").header("Authorization", "Bearer " + token))
                     .andExpect(status().isUnauthorized());
         }
     }
@@ -110,7 +110,7 @@ class AuthIntegrationTest {
         String[] parts = token.split("\\.");
         char first = parts[2].charAt(0);
         parts[2] = (first == 'A' ? "B" : "A") + parts[2].substring(1);
-        mvc.perform(get("/api/pedidos").header("Authorization", "Bearer " + String.join(".", parts)))
+        mvc.perform(get("/api/teste/protegido").header("Authorization", "Bearer " + String.join(".", parts)))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -147,7 +147,7 @@ class AuthIntegrationTest {
 
     @RestController
     static class ProtectedEndpoints {
-        @GetMapping("/api/pedidos")
+        @GetMapping("/api/teste/protegido")
         Map<String, String> resource() { return Map.of("status", "ok"); }
     }
 }

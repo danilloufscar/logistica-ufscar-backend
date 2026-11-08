@@ -55,4 +55,7 @@ public class ApiExceptionHandler {
     public ApiError unreadableBody(HttpMessageNotReadableException exception) {
         return new ApiError("JSON_INVALIDO", "Corpo da requisição inválido");
     }
+    
+    
+    
 }

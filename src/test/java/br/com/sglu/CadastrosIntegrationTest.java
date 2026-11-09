@@ -1,5 +1,7 @@
 package br.com.sglu;
 
+import br.com.sglu.support.BancoDeTeste;
+
 import br.com.sglu.model.Cliente;
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Produto;
@@ -54,9 +56,7 @@ class CadastrosIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        produtos.deleteAll();
-        clientes.deleteAll();
-        usuarios.deleteAll();
+        BancoDeTeste.limpar(jdbc);
         String hash = passwords.encode(PASSWORD);
         usuarios.save(new Usuario("Administrador", "admin@example.com", hash, Perfil.ADMINISTRADOR));
         usuarios.save(new Usuario("Operador", "operador@example.com", hash, Perfil.OPERADOR));

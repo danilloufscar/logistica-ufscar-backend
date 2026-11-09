@@ -118,7 +118,7 @@ class PedidoServiceTest {
         when(gerador.gerar()).thenReturn("AAAA2222");
         when(pedidos.existsByCodigoConsulta("AAAA2222")).thenReturn(true);
 
-        assertThatThrownBy(() -> service.criar(request(HOJE, item(10L, 1)), 7L)).isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> service.criar(request(HOJE, item(10L, 1)), 7L)).isInstanceOf(OperacaoNaoPermitidaException.class);
         verify(gerador, times(PedidoService.TENTATIVAS_CODIGO)).gerar();
         verify(pedidos, never()).saveAndFlush(any());
     }

@@ -136,7 +136,8 @@ public class PedidoService {
             var codigo = gerador.gerar();
             if (!pedidos.existsByCodigoConsulta(codigo)) return codigo;
         }
-        throw new IllegalStateException("Não foi possível gerar um código de consulta único");
+        throw new OperacaoNaoPermitidaException("CODIGO_CONSULTA_INDISPONIVEL",
+                "Não foi possível reservar um código de consulta. Tente novamente");
     }
 
     private Pedido buscar(Long id) {

@@ -7,6 +7,7 @@ import br.com.sglu.dto.pedido.PedidoResumoResponse;
 import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.model.StatusPedido;
 import br.com.sglu.service.PedidoService;
+import br.com.sglu.service.PedidoCadastroService;
 import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -26,15 +27,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/pedidos")
 public class PedidoController {
     private final PedidoService service;
+    private final PedidoCadastroService cadastro;
 
-    public PedidoController(PedidoService service) {
+    public PedidoController(PedidoService service, PedidoCadastroService cadastro) {
         this.service = service;
+        this.cadastro = cadastro;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public PedidoResponse criar(@Valid @RequestBody PedidoRequest request, @AuthenticationPrincipal Jwt jwt) {
-        return service.criar(request, usuarioId(jwt));
+        return cadastro.criar(request, usuarioId(jwt));
     }
 
     @GetMapping

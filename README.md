@@ -39,7 +39,7 @@ $env:BOOTSTRAP_ADMIN_PASSWORD = Read-Host 'Senha inicial (12+ caracteres)' -Mask
 .\mvnw.cmd spring-boot:run
 ```
 
-Flyway cria a tabela; Hibernate valida o esquema. O bootstrap salva somente o hash BCrypt. Se já houver Administrador, preserva seus dados; se o e-mail pertencer a um Operador, falha sem promovê-lo. Execute a primeira inicialização com uma única instância da aplicação. Nos próximos inícios, defina `BOOTSTRAP_ADMIN_ENABLED=false` e remova as variáveis de credenciais iniciais.
+Flyway cria e atualiza as tabelas; Hibernate apenas valida o esquema. O bootstrap salva somente o hash BCrypt. Se já houver Administrador, preserva seus dados; se o e-mail pertencer a um Operador, falha sem promovê-lo. Execute a primeira inicialização com uma única instância da aplicação. Nos próximos inícios, defina `BOOTSTRAP_ADMIN_ENABLED=false` e remova as variáveis de credenciais iniciais.
 
 ## Contrato com o frontend
 
@@ -160,6 +160,34 @@ As listagens retornam os mesmos campos das respostas de cadastro, ordenadas por 
 
 ## Testes e cobertura
 
+### Correções da Release 1 e atualização de bases existentes
+
+As migrações V3/V4 criam pedidos em bases novas e regularizam tabelas que foram criadas pelo antigo `ddl-auto=update`. A V3 usa o nome reconhecido pelo Flyway; a V4 instala as restrições ausentes e ajusta a exclusão dos filhos de pedidos. Nenhuma migração apaga usuários ou pedidos. Hibernate agora usa `validate`, e nomes inválidos de migração interrompem a inicialização.
+
+Antes de atualizar uma base com dados, faça um backup. Se houver dados antigos inválidos (por exemplo, quantidade zero ou código duplicado), a migração recusa a atualização; corrija esses registros de forma explícita antes de tentar novamente. Não apague volumes nem execute a limpeza de testes no banco de desenvolvimento. Em um build existente, use `./mvnw clean verify` para remover a cópia antiga de `V3_create_pedidos.sql` que possa ter ficado em `target/classes`.
+
+Pedidos inexistentes retornam 404 (`PEDIDO_NAO_ENCONTRADO`); referências/campos inválidos, 400 (`DADOS_INVALIDOS`); filtros inválidos, 400 (`PARAMETRO_INVALIDO`); ações proibidas/status desatualizado, 409; conflito de versão, 409 (`PEDIDO_DESATUALIZADO`); sessão sem usuário válido, 401. Todos usam `{codigo, mensagem, detalhes}`. Colisões concorrentes do código de consulta são repetidas em novas transações, com limite de cinco tentativas e sem repetir outros erros de integridade.
+
+### Sistema completo com Docker Compose
+
+Mantenha os repositórios em pastas irmãs `logistica-ufscar-backend` e `logistica-ufscar-frontend`. Na pasta do backend, copie `.env.example` para `.env`, preencha `DB_PASSWORD` e `JWT_SECRET` (Base64 de pelo menos 32 bytes aleatórios). O Compose carrega `.env`; a execução direta pelo IntelliJ/Maven exige as variáveis na própria configuração de execução.
+
+Em uma base vazia, configure `BOOTSTRAP_ADMIN_ENABLED=true`, nome, e-mail fictício e senha inicial de pelo menos 12 caracteres. Após criar o Administrador, volte para `false`. Em bases já utilizadas, preserve a senha do banco e a chave JWT existentes.
+
+```powershell
+docker compose up -d --build
+docker compose ps
+docker compose logs backend
+```
+
+Frontend: `http://localhost:3000`; API: `http://localhost:8080`; PostgreSQL local: `localhost:5432`. `FRONTEND_PORT`, `BACKEND_PORT` e `DB_PORT` permitem outras portas. Dentro do Docker a API conecta sempre a `db:5432`. `FRONTEND_CONTEXT` permite informar outra pasta do frontend.
+
+Para executar o backend no IntelliJ, suba somente `docker compose up -d db`, use `DB_URL=jdbc:postgresql://localhost:5432/sglu` (ou a porta escolhida em `DB_PORT`) e inicie o frontend com `npm run dev`. Não execute duas instâncias na mesma porta. Se já houver um container antigo, confira `docker compose ps`; pare o serviço antes de mudar seu mapeamento. `docker compose down` preserva o volume; não use `down -v` para atualizar o sistema.
+
+### Isolamento da suíte
+
+Os testes integrados usam `BancoDeTeste`, que remove histórico/itens antes de pedidos e cadastros. O teste de migração verifica instalação limpa, atualização com registros existentes, preservação do usuário e recusa de registros legados inválidos. Para executar esses cenários também em PostgreSQL temporário, inclua `PedidosMigrationTest` em `-Dtest` e defina `SGLU_MIGRATION_TEST_URL` para a mesma base exclusiva; cada cenário usa um schema temporário próprio.
+
 ```powershell
 .\mvnw.cmd verify
 ```
@@ -168,7 +196,7 @@ Os testes usam H2 em modo PostgreSQL, Flyway e credenciais fictícias exclusivas
 
 Os testes de clientes/produtos cobrem ambos os perfis, validações, limites, ordenação, persistência, duplicidade e restrições reais do banco. A migração também é verificada sobre uma base H2 na versão V1 com usuário existente, comprovando sua preservação após a V2.
 
-Para validar os testes de integração com PostgreSQL, use **uma base temporária exclusiva** e configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` e `SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver`. Execute `./mvnw -Dtest=AuthIntegrationTest,UsuarioIntegrationTest,CadastrosIntegrationTest verify` (no PowerShell, use `.\mvnw.cmd` e coloque o argumento `-Dtest=...` entre aspas). Esses testes limpam as tabelas de usuários, clientes e produtos da base configurada; nunca aponte para `sglu` ou para uma base com dados que precisam ser preservados. Remova essas variáveis após a validação para voltar ao H2 padrão.
+Para validar os testes de integração com PostgreSQL, use **uma base temporária exclusiva** e configure `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` e `SPRING_DATASOURCE_DRIVER_CLASS_NAME=org.postgresql.Driver`. Execute `./mvnw -Dtest=AuthIntegrationTest,UsuarioIntegrationTest,CadastrosIntegrationTest,PedidosIntegrationTest verify` (no PowerShell, use `.\mvnw.cmd` e coloque o argumento `-Dtest=...` entre aspas). Esses testes limpam as tabelas de usuários, clientes e produtos da base configurada; nunca aponte para `sglu` ou para uma base com dados que precisam ser preservados. Remova essas variáveis após a validação para voltar ao H2 padrão.
 
 O workflow de CI executa `verify` em push/PR quando estas alterações forem publicadas. Proteção de branch deve ser configurada no GitHub pela equipe.
 

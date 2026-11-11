@@ -33,6 +33,10 @@ public class MovimentacaoEstoque {
     @JoinColumn(name = "usuario_id", nullable = false, updatable = false)
     private Usuario usuario;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pedido_id", updatable = false)
+    private Pedido pedido;
+
     protected MovimentacaoEstoque() {}
 
     public static MovimentacaoEstoque entrada(Produto produto, int quantidade, LocalDate data, Usuario usuario, Instant agora) {
@@ -48,6 +52,15 @@ public class MovimentacaoEstoque {
     }
 
     public Long getId() { return id; }
+    public static MovimentacaoEstoque saida(Produto produto, int quantidade, LocalDate data, Usuario usuario,
+                                           Instant agora, Pedido pedido) {
+        var movimentacao = entrada(produto, quantidade, data, usuario, agora);
+        movimentacao.tipo = TipoMovimentacaoEstoque.SAIDA;
+        movimentacao.pedido = Objects.requireNonNull(pedido);
+        return movimentacao;
+    }
+
+    public Pedido getPedido() { return pedido; }
     public Produto getProduto() { return produto; }
     public TipoMovimentacaoEstoque getTipo() { return tipo; }
     public Integer getQuantidade() { return quantidade; }

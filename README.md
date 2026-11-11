@@ -216,7 +216,7 @@ A migração V5 cria o saldo inicial zero dos produtos existentes e a tabela `mo
 
 Validação manual: registre 10 unidades e depois 5 do mesmo produto; as respostas devem apresentar saldos 10 e 15. Quantidade zero, negativa, fracionada, produto inexistente ou data inválida não podem alterar o saldo. Execute `./mvnw verify` para incluir os testes de concorrência, rollback, permissões e migração V4→V5. Para PostgreSQL temporário, inclua `EstoqueIntegrationTest` e `PedidosMigrationTest` na seleção de testes descrita acima.
 
-O RF08 cobre o registro de entradas. A consulta de saldos/alertas (RF10) está descrita abaixo; baixa no despacho (RF09), inventário (RF11) e consulta de movimentações (RF12) são etapas seguintes. O retorno de saldo é uma fotografia após aquela entrada. A API não oferece reenvio idempotente; em falha de conexão após envio, confira o registro antes de repetir.
+O RF08 cobre o registro de entradas. A consulta de saldos/alertas (RF10) está descrita abaixo; o despacho com baixa (RF09) está descrito ao final. Inventário (RF11) e consulta de movimentações (RF12) são etapas seguintes. O retorno de saldo é uma fotografia após aquela entrada. A API não oferece reenvio idempotente; em falha de conexão após envio, confira o registro antes de repetir.
 
 ## Consulta de estoque — RF10
 
@@ -228,4 +228,20 @@ O RF08 cobre o registro de entradas. A consulta de saldos/alertas (RF10) está d
 
 O indicador é calculado pelo domínio na leitura: `saldo <= estoqueMinimo`, inclusive 0/0. A consulta não altera saldos nem gera movimentações e retorna `[]` quando não há produtos. Sem autenticação válida retorna 401. Não há migração adicional: utiliza o saldo criado na V5 (RF08).
 
-Valide saldo abaixo, igual e acima do mínimo e consulte novamente após uma entrada. A resposta deve refletir o saldo persistido e remover o alerta somente ao ultrapassar o mínimo. Testes automatizados incluem ambos os perfis, produtos sem movimentação, ordenação, lista vazia, autenticação e ausência de efeitos colaterais. RF09 (baixa no despacho) segue pendente.
+Valide saldo abaixo, igual e acima do mínimo e consulte novamente após uma entrada. A resposta deve refletir o saldo persistido e remover o alerta somente ao ultrapassar o mínimo. Testes automatizados incluem ambos os perfis, produtos sem movimentação, ordenação, lista vazia, autenticação e ausência de efeitos colaterais. O RF09 integra essa consulta à baixa no despacho, conforme a seção seguinte.
+
+## Despacho com baixa de estoque — RF09 / RN03
+
+A rota existente `POST /api/pedidos/{id}/avancar`, com `{"statusAtual":"EM_SEPARACAO"}`, passa a conferir e baixar todos os itens ao mudar para DESPACHADO. Administrador e Operador podem executar a ação. Saldo exatamente igual à quantidade solicitada permite despacho; estoque mínimo é um alerta, não uma reserva.
+
+Pedido, saldos, movimentações SAIDA e histórico de status participam da mesma transação. O pedido é bloqueado durante avanço/edição/cancelamento; os produtos são bloqueados por id em ordem crescente, usando o mesmo bloqueio das entradas. Falhas desfazem a operação inteira. Repetir uma tentativa com status antigo retorna `409 STATUS_DESATUALIZADO` e não gera nova baixa. Avançar para EM_TRANSITO ou ENTREGUE também não repete a baixa.
+
+Se faltar saldo, a API retorna `409 ESTOQUE_INSUFICIENTE`, sem alterar o pedido, o histórico ou qualquer saldo:
+
+```json
+{"codigo":"ESTOQUE_INSUFICIENTE","mensagem":"Despacho bloqueado: há produtos com estoque insuficiente. Nenhum item foi baixado","detalhes":{},"itens":[{"produtoId":1,"codigo":"P1","nome":"Produto","solicitado":5,"disponivel":2,"faltante":3}]}
+```
+
+A migração V6 permite SAIDA, vincula a movimentação ao pedido e impede saídas duplicadas do mesmo produto/pedido. Preserva saldos e entradas existentes. Pedidos que já estavam despachados antes da V6 não sofrem baixa retroativa. A saída registra quantidade positiva, usuário da sessão, instante do servidor e data no fuso America/Sao_Paulo.
+
+Validação: crie um pedido com dois produtos, sendo um insuficiente; avance para separação e tente despachar. Confira 409, status e saldos intactos. Reponha o que falta pelo RF08, tente novamente e confira a baixa dos dois produtos, histórico e consulta RF10. Testes cobrem rollback real de movimentação/histórico, concorrência entre pedidos, duplicidade, entrada concorrente e edição/cancelamento simultâneos. Para executar em PostgreSQL temporário, inclua `DespachoIntegrationTest,PedidosIntegrationTest,EstoqueIntegrationTest,PedidosMigrationTest` na seleção de testes; nunca aponte para uma base com dados de desenvolvimento.

@@ -14,6 +14,28 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PedidosMigrationTest {
     @Test
+    void migracaoDeSaidasPreservaEntradasESaldosSemBaixaRetroativaEProtegeVinculos() throws Exception {
+        try (var banco = new Banco()) {
+            banco.legado(1);
+            banco.migrar("5");
+            banco.jdbc.update("UPDATE produtos SET saldo=12 WHERE id=1");
+            banco.jdbc.update("UPDATE pedidos SET status='DESPACHADO' WHERE id=1");
+            banco.jdbc.update("INSERT INTO movimentacoes_estoque(produto_id,tipo,quantidade,data,registrado_em,usuario_id) VALUES(1,'ENTRADA',12,CURRENT_DATE,CURRENT_TIMESTAMP,1)");
+            banco.migrar(null);
+            assertThat(banco.jdbc.queryForObject("SELECT saldo FROM produtos WHERE id=1", Integer.class)).isEqualTo(12);
+            assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM movimentacoes_estoque WHERE tipo='ENTRADA' AND pedido_id IS NULL", Integer.class)).isEqualTo(1);
+            assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM movimentacoes_estoque WHERE tipo='SAIDA'", Integer.class)).isZero();
+            String inserir = "INSERT INTO movimentacoes_estoque(produto_id,tipo,quantidade,data,registrado_em,usuario_id,pedido_id) VALUES(1,?,1,CURRENT_DATE,CURRENT_TIMESTAMP,1,?)";
+            assertThatThrownBy(() -> banco.jdbc.update(inserir, "SAIDA", null)).isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> banco.jdbc.update(inserir, "ENTRADA", 1)).isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> banco.jdbc.update(inserir, "SAIDA", 9999)).isInstanceOf(DataIntegrityViolationException.class);
+            banco.jdbc.update(inserir, "SAIDA", 1);
+            assertThatThrownBy(() -> banco.jdbc.update(inserir, "SAIDA", 1)).isInstanceOf(DataIntegrityViolationException.class);
+            assertThatThrownBy(() -> banco.jdbc.update("DELETE FROM pedidos WHERE id=1")).isInstanceOf(DataIntegrityViolationException.class);
+        }
+    }
+
+    @Test
     void migracaoDeEstoquePreservaProdutosExistentesEInicializaSaldoZero() throws Exception {
         try (var banco = new Banco()) {
             banco.migrar("4");
@@ -30,7 +52,7 @@ class PedidosMigrationTest {
         try (var banco = new Banco()) {
             banco.migrar(null);
             assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM pedidos", Integer.class)).isZero();
-            assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("5");
+            assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("6");
         }
     }
 

@@ -9,6 +9,8 @@ import jakarta.persistence.Table;
 import java.util.Locale;
 import java.util.Objects;
 import br.com.sglu.exception.OperacaoNaoPermitidaException;
+import br.com.sglu.exception.EstoqueInsuficienteException;
+import java.util.List;
 
 @Entity
 @Table(name = "produtos")
@@ -62,5 +64,13 @@ public class Produto {
             throw new OperacaoNaoPermitidaException("SALDO_LIMITE_EXCEDIDO",
                     "A entrada ultrapassa o limite de 2.147.483.647 unidades do produto");
         }
+    }
+
+    public void registrarSaida(int quantidade) {
+        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        if (saldo < quantidade) {
+            throw new EstoqueInsuficienteException(List.of(EstoqueInsuficienteException.Item.from(this, quantidade)));
+        }
+        saldo -= quantidade;
     }
 }

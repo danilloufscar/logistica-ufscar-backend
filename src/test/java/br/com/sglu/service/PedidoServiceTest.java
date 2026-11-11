@@ -64,6 +64,7 @@ class PedidoServiceTest {
     @Mock ProdutoRepository produtos;
     @Mock UsuarioRepository usuarios;
     @Mock GeradorCodigoConsulta gerador;
+    @Mock DespachoEstoqueService despacho;
     PedidoService service;
 
     final Cliente cliente = comId(new Cliente("Comercial Silva", "(15) 3221-4400", "Rua das Flores, 120"), 1L);
@@ -73,7 +74,7 @@ class PedidoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PedidoService(pedidos, clientes, produtos, usuarios, gerador, Clock.fixed(AGORA, ZoneOffset.UTC));
+        service = new PedidoService(pedidos, clientes, produtos, usuarios, gerador, Clock.fixed(AGORA, ZoneOffset.UTC), despacho);
     }
 
     @Test
@@ -158,7 +159,7 @@ class PedidoServiceTest {
     @Test
     void avancaUmaEtapaPorVezAteEntregueRegistrandoUsuarioEDataHora() {
         var pedido = pedido(HOJE.plusDays(5));
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         when(usuarios.findById(7L)).thenReturn(Optional.of(usuario));
 
         var atual = CRIADO;
@@ -180,7 +181,7 @@ class PedidoServiceTest {
     @Test
     void recusaAvancoComStatusDesatualizadoSemPularEtapa() {
         var pedido = pedido(HOJE.plusDays(5));
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
 
         assertThatThrownBy(() -> service.avancar(5L, EM_SEPARACAO, 7L)).isInstanceOfSatisfying(OperacaoNaoPermitidaException.class,
                 erro -> assertThat(erro.getCodigo()).isEqualTo("STATUS_DESATUALIZADO"));
@@ -193,7 +194,7 @@ class PedidoServiceTest {
         var pedido = pedido(HOJE.plusDays(5));
         pedido.avancar(usuario, AGORA);
         var itemCaixa = pedido.getItens().getFirst();
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         dadosValidos();
 
         var resposta = service.editar(5L, request(HOJE.plusDays(8), item(11L, 4), item(10L, 3)));
@@ -212,7 +213,7 @@ class PedidoServiceTest {
     @Test
     void mantemPrazoVencidoNaEdicaoMasRecusaNovoPrazoNoPassado() {
         var pedido = pedido(HOJE.minusDays(2));
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         dadosValidos();
 
         assertThat(service.editar(5L, request(HOJE.minusDays(2), item(10L, 1))).atrasado()).isTrue();
@@ -225,7 +226,7 @@ class PedidoServiceTest {
     void naoEditaNemCancelaDepoisDoDespacho() {
         var pedido = pedido(HOJE.plusDays(5));
         avancarAte(pedido, DESPACHADO);
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         when(usuarios.findById(7L)).thenReturn(Optional.of(usuario));
         dadosValidos();
 
@@ -241,7 +242,7 @@ class PedidoServiceTest {
     @Test
     void cancelaPedidoCriadoECanceladoEFinal() {
         var pedido = pedido(HOJE.minusDays(1));
-        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         when(usuarios.findById(7L)).thenReturn(Optional.of(usuario));
 
         var resposta = service.cancelar(5L, 7L);
@@ -258,6 +259,7 @@ class PedidoServiceTest {
     @Test
     void detalhaPedidoEExigePedidoEUsuarioExistentes() {
         var pedido = pedido(HOJE);
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
         when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
         when(pedidos.findById(99L)).thenReturn(Optional.empty());
         when(usuarios.findById(7L)).thenReturn(Optional.empty());

@@ -130,6 +130,7 @@ class PedidosIntegrationTest {
 
     @Test
     void avancaUmaEtapaPorVezAteEntregue() throws Exception {
+        abastecerCaixa();
         long id = criarId(clienteA, hoje().plusDays(3));
         String atual = "CRIADO";
         for (String proximo : List.of("EM_SEPARACAO", "DESPACHADO", "EM_TRANSITO", "ENTREGUE")) {
@@ -152,6 +153,7 @@ class PedidosIntegrationTest {
 
     @Test
     void editaECancelaSomenteAntesDoDespacho() throws Exception {
+        abastecerCaixa();
         long id = criarId(clienteA, hoje().plusDays(3));
         avancar(id, "CRIADO", adminToken).andExpect(status().isOk());
 
@@ -220,6 +222,13 @@ class PedidosIntegrationTest {
 
     private static LocalDate hoje() {
         return LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+    }
+
+    private void abastecerCaixa() throws Exception {
+        mvc.perform(comToken(post("/api/estoque/entradas"), adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("produtoId", caixa, "quantidade", 10, "data", hoje().toString()))))
+                .andExpect(status().isCreated());
     }
 
     @Test

@@ -1,6 +1,9 @@
 package br.com.sglu.controller;
 
 import br.com.sglu.dto.error.ApiError;
+import br.com.sglu.dto.error.EstoqueInsuficienteError;
+import br.com.sglu.exception.EstoqueInsuficienteException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import br.com.sglu.exception.EmailJaCadastradoException;
 import br.com.sglu.exception.CodigoProdutoJaCadastradoException;
 import br.com.sglu.exception.DadosInvalidosException;
@@ -22,6 +25,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(EstoqueInsuficienteException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public EstoqueInsuficienteError insufficientStock(EstoqueInsuficienteException exception) {
+        return EstoqueInsuficienteError.from(exception);
+    }
+
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    @ResponseStatus(HttpStatus.CONFLICT)
+    public ApiError busyOperation(PessimisticLockingFailureException exception) {
+        return new ApiError("OPERACAO_CONCORRENTE", "Outra operação está alterando estes dados. Atualize a página e tente novamente");
+    }
 
     @ExceptionHandler(DadosInvalidosException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)

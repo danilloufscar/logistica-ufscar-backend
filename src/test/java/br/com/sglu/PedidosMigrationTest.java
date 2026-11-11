@@ -14,11 +14,23 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class PedidosMigrationTest {
     @Test
+    void migracaoDeEstoquePreservaProdutosExistentesEInicializaSaldoZero() throws Exception {
+        try (var banco = new Banco()) {
+            banco.migrar("4");
+            banco.jdbc.update("INSERT INTO produtos(codigo,nome,estoque_minimo) VALUES('EXISTENTE','Produto existente',8)");
+            banco.migrar(null);
+            assertThat(banco.jdbc.queryForObject("SELECT saldo FROM produtos WHERE codigo='EXISTENTE'", Integer.class)).isZero();
+            assertThat(banco.jdbc.queryForObject("SELECT estoque_minimo FROM produtos WHERE codigo='EXISTENTE'", Integer.class)).isEqualTo(8);
+            assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM movimentacoes_estoque", Integer.class)).isZero();
+        }
+    }
+
+    @Test
     void instalaTodasAsMigracoesEmBaseNova() throws Exception {
         try (var banco = new Banco()) {
             banco.migrar(null);
             assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM pedidos", Integer.class)).isZero();
-            assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("4");
+            assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("5");
         }
     }
 

@@ -7,6 +7,7 @@ public final class BancoDeTeste {
     private BancoDeTeste() {}
 
     public static void limpar(JdbcTemplate jdbc) {
+        jdbc.update("DELETE FROM movimentacoes_estoque");
         jdbc.update("DELETE FROM pedido_historico");
         jdbc.update("DELETE FROM pedido_itens");
         jdbc.update("DELETE FROM pedidos");

@@ -201,3 +201,19 @@ Para validar os testes de integração com PostgreSQL, use **uma base temporári
 O workflow de CI executa `verify` em push/PR quando estas alterações forem publicadas. Proteção de branch deve ser configurada no GitHub pela equipe.
 
 **Pendência de aderência ao enunciado:** ele menciona JUnit 5. A stack original Spring Boot 4.1.1 utiliza JUnit 6 e Spring Framework 7, que [exige JUnit 6](https://github.com/spring-projects/spring-framework/wiki/Spring-Framework-7.0-Release-Notes#baseline-upgrades). Mantivemos essa stack; alinhar a versão com o professor ou planejar a migração conjunta da stack, sem forçar JUnit 5 incompatível.
+
+## Entradas de estoque — RF08
+
+Administradores e Operadores autenticados podem registrar entradas em `POST /api/estoque/entradas`:
+
+```json
+{"produtoId": 1, "quantidade": 10, "data": "2026-11-09"}
+```
+
+A resposta `201` informa a movimentação, produto, quantidade, data, instante de registro, usuário responsável e `saldoAtual` após a operação. A data informada é obrigatória; não há restrição de passado/futuro no RF08. Quantidade deve ser inteira positiva. Por compatibilidade com o tipo INTEGER, quantidade e saldo têm limite técnico de 2.147.483.647; exceder o saldo retorna `409 SALDO_LIMITE_EXCEDIDO`. Dados inválidos retornam 400 e autenticação inválida retorna 401.
+
+A migração V5 cria o saldo inicial zero dos produtos existentes e a tabela `movimentacoes_estoque`. Saldo e movimentação ENTRADA são gravados na mesma transação; um bloqueio por produto protege entradas concorrentes. Uma falha desfaz ambos. A autoria vem do JWT, nunca do formulário.
+
+Validação manual: registre 10 unidades e depois 5 do mesmo produto; as respostas devem apresentar saldos 10 e 15. Quantidade zero, negativa, fracionada, produto inexistente ou data inválida não podem alterar o saldo. Execute `./mvnw verify` para incluir os testes de concorrência, rollback, permissões e migração V4→V5. Para PostgreSQL temporário, inclua `EstoqueIntegrationTest` e `PedidosMigrationTest` na seleção de testes descrita acima.
+
+Este incremento cobre RF08. Consulta geral de saldos/alertas (RF10), baixa no despacho (RF09), inventário (RF11) e consulta de movimentações (RF12) são etapas seguintes. O retorno de saldo é uma fotografia após aquela entrada. A API não oferece reenvio idempotente; em falha de conexão após envio, confira o registro antes de repetir.

@@ -50,6 +50,10 @@ public class Produto {
     public Integer getEstoqueMinimo() { return estoqueMinimo; }
     public Integer getSaldo() { return saldo; }
 
+    public boolean estaNoOuAbaixoDoMinimo() {
+        return saldo <= estoqueMinimo;
+    }
+
     public void registrarEntrada(int quantidade) {
         if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
         try {

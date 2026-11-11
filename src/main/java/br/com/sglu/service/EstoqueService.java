@@ -2,6 +2,7 @@ package br.com.sglu.service;
 
 import br.com.sglu.dto.estoque.EntradaEstoqueRequest;
 import br.com.sglu.dto.estoque.EntradaEstoqueResponse;
+import br.com.sglu.dto.estoque.SaldoEstoqueResponse;
 import br.com.sglu.exception.DadosInvalidosException;
 import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.model.MovimentacaoEstoque;
@@ -10,6 +11,8 @@ import br.com.sglu.repository.ProdutoRepository;
 import br.com.sglu.repository.UsuarioRepository;
 import java.time.Clock;
 import java.util.Map;
+import java.util.List;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,6 +29,13 @@ public class EstoqueService {
         this.movimentacoes = movimentacoes;
         this.usuarios = usuarios;
         this.clock = clock;
+    }
+
+    @Transactional(readOnly = true)
+    public List<SaldoEstoqueResponse> listarSaldos() {
+        return produtos.findAll(Sort.by("nome", "id")).stream()
+                .map(SaldoEstoqueResponse::from)
+                .toList();
     }
 
     @Transactional

@@ -36,6 +36,7 @@ import tools.jackson.databind.ObjectMapper;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
@@ -175,6 +176,65 @@ class EstoqueIntegrationTest {
         assertThatThrownBy(() -> jdbc.update("DELETE FROM usuarios WHERE id=?", adminId))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(saldo()).isEqualTo(1);
+    }
+
+    @ParameterizedTest
+    @EnumSource(Perfil.class)
+    void consultaSaldoAtualEAlertaNosLimitesParaAmbosPerfis(Perfil perfil) throws Exception {
+        String jwt = login(perfil == Perfil.ADMINISTRADOR ? "admin@example.com" : "operador@example.com");
+        produtos.saveAndFlush(new Produto("ZERO", "Zero unidades", 0));
+        consultar(jwt).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(produtoId))
+                .andExpect(jsonPath("$[0].codigo").value("P-001"))
+                .andExpect(jsonPath("$[0].nome").value("Produto de teste"))
+                .andExpect(jsonPath("$[0].saldo").value(0))
+                .andExpect(jsonPath("$[0].estoqueMinimo").value(5))
+                .andExpect(jsonPath("$[0].abaixoOuNoMinimo").value(true))
+                .andExpect(jsonPath("$[1].saldo").value(0))
+                .andExpect(jsonPath("$[1].estoqueMinimo").value(0))
+                .andExpect(jsonPath("$[1].abaixoOuNoMinimo").value(true));
+
+        enviar(dados(5), jwt).andExpect(status().isCreated());
+        consultar(jwt).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].saldo").value(5))
+                .andExpect(jsonPath("$[0].abaixoOuNoMinimo").value(true));
+        enviar(dados(1), jwt).andExpect(status().isCreated());
+        consultar(jwt).andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].saldo").value(6))
+                .andExpect(jsonPath("$[0].abaixoOuNoMinimo").value(false));
+        // Consultas não alteram o saldo nem geram novas movimentações.
+        assertThat(saldo()).isEqualTo(6);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM movimentacoes_estoque", Integer.class)).isEqualTo(2);
+    }
+
+    @Test
+    void listaTodosProdutosMesmoSemMovimentacaoEmOrdemEstavel() throws Exception {
+        Long primeiro = produtos.saveAndFlush(new Produto("A1", "Alfa", 1)).getId();
+        Long segundo = produtos.saveAndFlush(new Produto("A2", "Alfa", 2)).getId();
+        consultar(token).andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].id").value(primeiro))
+                .andExpect(jsonPath("$[1].id").value(segundo))
+                .andExpect(jsonPath("$[2].id").value(produtoId));
+        semEntrada();
+    }
+
+    @Test
+    void consultaSemProdutosRetornaListaVazia() throws Exception {
+        produtos.deleteAll();
+        consultar(token).andExpect(status().isOk()).andExpect(content().json("[]"));
+    }
+
+    @Test
+    void consultaEstoqueExigeAutenticacao() throws Exception {
+        mvc.perform(get("/api/estoque")).andExpect(status().isUnauthorized());
+        consultar("invalido").andExpect(status().isUnauthorized());
+        semEntrada();
+    }
+
+    private ResultActions consultar(String jwt) throws Exception {
+        return mvc.perform(get("/api/estoque").header("Authorization", "Bearer " + jwt));
     }
 
     private Map<String, Object> dados(int quantidade) {

@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.List;
+import org.springframework.data.domain.Sort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -91,6 +93,21 @@ class EstoqueServiceTest {
                         erro -> assertThat(erro.getCodigo()).isEqualTo("SALDO_LIMITE_EXCEDIDO"));
         assertThat(produto.getSaldo()).isEqualTo(Integer.MAX_VALUE);
         verifyNoInteractions(movimentacoes);
+    }
+
+    @Test
+    void consultaMapeiaSaldosSemGravarMovimentacoes() {
+        produto.registrarEntrada(2);
+        when(produtos.findAll(Sort.by("nome", "id"))).thenReturn(List.of(produto));
+        var saldos = service.listarSaldos();
+        assertThat(saldos).hasSize(1);
+        assertThat(saldos.getFirst().id()).isEqualTo(1L);
+        assertThat(saldos.getFirst().saldo()).isEqualTo(2);
+        assertThat(saldos.getFirst().estoqueMinimo()).isEqualTo(2);
+        assertThat(saldos.getFirst().abaixoOuNoMinimo()).isTrue();
+        verify(produtos).findAll(Sort.by("nome", "id"));
+        verifyNoMoreInteractions(produtos);
+        verifyNoInteractions(movimentacoes, usuarios);
     }
 
     private void referenciasValidas() {

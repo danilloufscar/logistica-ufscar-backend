@@ -216,4 +216,16 @@ A migração V5 cria o saldo inicial zero dos produtos existentes e a tabela `mo
 
 Validação manual: registre 10 unidades e depois 5 do mesmo produto; as respostas devem apresentar saldos 10 e 15. Quantidade zero, negativa, fracionada, produto inexistente ou data inválida não podem alterar o saldo. Execute `./mvnw verify` para incluir os testes de concorrência, rollback, permissões e migração V4→V5. Para PostgreSQL temporário, inclua `EstoqueIntegrationTest` e `PedidosMigrationTest` na seleção de testes descrita acima.
 
-Este incremento cobre RF08. Consulta geral de saldos/alertas (RF10), baixa no despacho (RF09), inventário (RF11) e consulta de movimentações (RF12) são etapas seguintes. O retorno de saldo é uma fotografia após aquela entrada. A API não oferece reenvio idempotente; em falha de conexão após envio, confira o registro antes de repetir.
+O RF08 cobre o registro de entradas. A consulta de saldos/alertas (RF10) está descrita abaixo; baixa no despacho (RF09), inventário (RF11) e consulta de movimentações (RF12) são etapas seguintes. O retorno de saldo é uma fotografia após aquela entrada. A API não oferece reenvio idempotente; em falha de conexão após envio, confira o registro antes de repetir.
+
+## Consulta de estoque — RF10
+
+`GET /api/estoque` permite Administrador e Operador autenticados e retorna todos os produtos, inclusive aqueles sem movimentações, ordenados por nome e id. Exemplo de item (`id` identifica o produto):
+
+```json
+{"id":1,"codigo":"P-001","nome":"Produto","saldo":5,"estoqueMinimo":5,"abaixoOuNoMinimo":true}
+```
+
+O indicador é calculado pelo domínio na leitura: `saldo <= estoqueMinimo`, inclusive 0/0. A consulta não altera saldos nem gera movimentações e retorna `[]` quando não há produtos. Sem autenticação válida retorna 401. Não há migração adicional: utiliza o saldo criado na V5 (RF08).
+
+Valide saldo abaixo, igual e acima do mínimo e consulte novamente após uma entrada. A resposta deve refletir o saldo persistido e remover o alerta somente ao ultrapassar o mínimo. Testes automatizados incluem ambos os perfis, produtos sem movimentação, ordenação, lista vazia, autenticação e ausência de efeitos colaterais. RF09 (baixa no despacho) segue pendente.

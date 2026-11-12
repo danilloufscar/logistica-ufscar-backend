@@ -4,6 +4,7 @@ import br.com.sglu.dto.estoque.AjusteEstoqueRequest;
 import br.com.sglu.dto.estoque.AjusteEstoqueResponse;
 import br.com.sglu.dto.estoque.EntradaEstoqueRequest;
 import br.com.sglu.dto.estoque.EntradaEstoqueResponse;
+import br.com.sglu.dto.estoque.MovimentacaoEstoqueResponse;
 import br.com.sglu.dto.estoque.SaldoEstoqueResponse;
 import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.service.EstoqueService;
@@ -46,5 +47,10 @@ public class EstoqueController {
         if (!(id instanceof Number numero))
             throw new SessaoInvalidaException();
         return service.ajustarInventario(request, numero.longValue());
+    }
+
+    @GetMapping("/{produtoId}/movimentacoes")
+    public List<MovimentacaoEstoqueResponse> listarMovimentacoes(@PathVariable Long produtoId) {
+        return service.listarMovimentacoesPorProduto(produtoId);
     }
 }

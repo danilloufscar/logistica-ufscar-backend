@@ -1,9 +1,11 @@
 package br.com.sglu.controller;
 
 import br.com.sglu.dto.pedido.AvancoStatusRequest;
+import br.com.sglu.dto.pedido.OcorrenciaPedidoRequest;
 import br.com.sglu.dto.pedido.PedidoRequest;
 import br.com.sglu.dto.pedido.PedidoResponse;
 import br.com.sglu.dto.pedido.PedidoResumoResponse;
+import br.com.sglu.dto.pedido.TimelineEventoResponse;
 import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.model.StatusPedido;
 import br.com.sglu.service.PedidoService;
@@ -42,7 +44,7 @@ public class PedidoController {
 
     @GetMapping
     public List<PedidoResumoResponse> listar(@RequestParam(required = false) StatusPedido status,
-                                             @RequestParam(required = false) Long clienteId) {
+            @RequestParam(required = false) Long clienteId) {
         return service.listar(status, clienteId);
     }
 
@@ -63,14 +65,28 @@ public class PedidoController {
 
     @PostMapping("/{id}/avancar")
     public PedidoResponse avancar(@PathVariable Long id, @Valid @RequestBody AvancoStatusRequest request,
-                                  @AuthenticationPrincipal Jwt jwt) {
+            @AuthenticationPrincipal Jwt jwt) {
         return service.avancar(id, request.statusAtual(), usuarioId(jwt));
     }
 
     // O claim "id" é gravado no token pelo JwtTokenService.
     private static Long usuarioId(Jwt jwt) {
         Object id = jwt == null ? null : jwt.getClaim("id");
-        if (id instanceof Number numero) return numero.longValue();
+        if (id instanceof Number numero)
+            return numero.longValue();
         throw new SessaoInvalidaException();
+    }
+
+    @GetMapping("/{id}/timeline")
+    public List<TimelineEventoResponse> timeline(@PathVariable Long id) {
+        return service.timeline(id);
+    }
+
+    @PostMapping("/{id}/ocorrencias")
+    @ResponseStatus(HttpStatus.CREATED)
+    public TimelineEventoResponse registrarOcorrencia(@PathVariable Long id,
+            @Valid @RequestBody OcorrenciaPedidoRequest request,
+            @AuthenticationPrincipal Jwt jwt) {
+        return service.registrarOcorrencia(id, request.descricao(), usuarioId(jwt));
     }
 }

@@ -37,10 +37,13 @@ public class MovimentacaoEstoque {
     @JoinColumn(name = "pedido_id", updatable = false)
     private Pedido pedido;
 
-    protected MovimentacaoEstoque() {}
+    protected MovimentacaoEstoque() {
+    }
 
-    public static MovimentacaoEstoque entrada(Produto produto, int quantidade, LocalDate data, Usuario usuario, Instant agora) {
-        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+    public static MovimentacaoEstoque entrada(Produto produto, int quantidade, LocalDate data, Usuario usuario,
+            Instant agora) {
+        if (quantidade <= 0)
+            throw new IllegalArgumentException("Quantidade deve ser maior que zero");
         var movimentacao = new MovimentacaoEstoque();
         movimentacao.produto = Objects.requireNonNull(produto);
         movimentacao.tipo = TipoMovimentacaoEstoque.ENTRADA;
@@ -51,20 +54,68 @@ public class MovimentacaoEstoque {
         return movimentacao;
     }
 
-    public Long getId() { return id; }
+    public Long getId() {
+        return id;
+    }
+
     public static MovimentacaoEstoque saida(Produto produto, int quantidade, LocalDate data, Usuario usuario,
-                                           Instant agora, Pedido pedido) {
+            Instant agora, Pedido pedido) {
         var movimentacao = entrada(produto, quantidade, data, usuario, agora);
         movimentacao.tipo = TipoMovimentacaoEstoque.SAIDA;
         movimentacao.pedido = Objects.requireNonNull(pedido);
         return movimentacao;
     }
 
-    public Pedido getPedido() { return pedido; }
-    public Produto getProduto() { return produto; }
-    public TipoMovimentacaoEstoque getTipo() { return tipo; }
-    public Integer getQuantidade() { return quantidade; }
-    public LocalDate getData() { return data; }
-    public Instant getRegistradoEm() { return registradoEm; }
-    public Usuario getUsuario() { return usuario; }
+    @Column(length = 500, updatable = false)
+    private String justificativa;
+
+    public static MovimentacaoEstoque ajuste(Produto produto, TipoMovimentacaoEstoque tipo, int quantidade,
+            LocalDate data, Usuario usuario, Instant agora, String justificativa) {
+        if (quantidade <= 0)
+            throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        if (tipo != TipoMovimentacaoEstoque.AJUSTE_ENTRADA && tipo != TipoMovimentacaoEstoque.AJUSTE_SAIDA) {
+            throw new IllegalArgumentException("Tipo de movimentacao invalido para ajuste");
+        }
+        var movimentacao = new MovimentacaoEstoque();
+        movimentacao.produto = Objects.requireNonNull(produto);
+        movimentacao.tipo = tipo;
+        movimentacao.quantidade = quantidade;
+        movimentacao.data = Objects.requireNonNull(data);
+        movimentacao.usuario = Objects.requireNonNull(usuario);
+        movimentacao.registradoEm = Objects.requireNonNull(agora);
+        movimentacao.justificativa = Objects.requireNonNull(justificativa);
+        return movimentacao;
+    }
+
+    public String getJustificativa() {
+        return justificativa;
+    }
+
+    public Pedido getPedido() {
+        return pedido;
+    }
+
+    public Produto getProduto() {
+        return produto;
+    }
+
+    public TipoMovimentacaoEstoque getTipo() {
+        return tipo;
+    }
+
+    public Integer getQuantidade() {
+        return quantidade;
+    }
+
+    public LocalDate getData() {
+        return data;
+    }
+
+    public Instant getRegistradoEm() {
+        return registradoEm;
+    }
+
+    public Usuario getUsuario() {
+        return usuario;
+    }
 }

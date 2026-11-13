@@ -1,19 +1,24 @@
 package br.com.sglu.service;
 
+import br.com.sglu.dto.pedido.AcompanhamentoPedidoResponse;
 import br.com.sglu.dto.pedido.ItemPedidoRequest;
+import br.com.sglu.dto.pedido.OcorrenciaPedidoRequest;
 import br.com.sglu.dto.pedido.PedidoRequest;
 import br.com.sglu.dto.pedido.PedidoResponse;
 import br.com.sglu.dto.pedido.PedidoResumoResponse;
+import br.com.sglu.dto.pedido.TimelineEventoResponse;
 import br.com.sglu.exception.DadosInvalidosException;
 import br.com.sglu.exception.OperacaoNaoPermitidaException;
 import br.com.sglu.exception.PedidoNaoEncontradoException;
 import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.model.Cliente;
+import br.com.sglu.model.OcorrenciaPedido;
 import br.com.sglu.model.Pedido;
 import br.com.sglu.model.Produto;
 import br.com.sglu.model.StatusPedido;
 import br.com.sglu.model.Usuario;
 import br.com.sglu.repository.ClienteRepository;
+import br.com.sglu.repository.OcorrenciaPedidoRepository;
 import br.com.sglu.repository.PedidoRepository;
 import br.com.sglu.repository.ProdutoRepository;
 import br.com.sglu.repository.UsuarioRepository;
@@ -21,12 +26,14 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,9 +51,12 @@ public class PedidoService {
     private final GeradorCodigoConsulta gerador;
     private final Clock clock;
     private final DespachoEstoqueService despacho;
+    private final OcorrenciaPedidoRepository ocorrencias;
 
+    @Autowired
     public PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
-                         UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock, DespachoEstoqueService despacho) {
+            UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock,
+            DespachoEstoqueService despacho, OcorrenciaPedidoRepository ocorrencias) {
         this.pedidos = pedidos;
         this.clientes = clientes;
         this.produtos = produtos;
@@ -54,6 +64,13 @@ public class PedidoService {
         this.gerador = gerador;
         this.clock = clock;
         this.despacho = despacho;
+        this.ocorrencias = ocorrencias;
+    }
+
+    PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
+            UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock,
+            DespachoEstoqueService despacho) {
+        this(pedidos, clientes, produtos, usuarios, gerador, clock, despacho, null);
     }
 
     @Transactional
@@ -103,17 +120,49 @@ public class PedidoService {
         }
         var usuario = usuario(usuarioId);
         var agora = clock.instant();
-        if (pedido.getStatus() == StatusPedido.EM_SEPARACAO) despacho.baixar(pedido, usuario, agora);
+        if (pedido.getStatus() == StatusPedido.EM_SEPARACAO)
+            despacho.baixar(pedido, usuario, agora);
         pedido.avancar(usuario, agora);
         return PedidoResponse.from(pedido, hoje());
     }
 
-    private record DadosValidados(Cliente cliente, List<Pedido.Item> itens) {}
+    @Transactional(readOnly = true)
+    public List<TimelineEventoResponse> timeline(Long id) {
+        var pedido = buscar(id);
+        var eventos = new ArrayList<TimelineEventoResponse>();
+
+        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
+        ocorrencias.buscarPorPedidoId(id).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
+
+        eventos.sort(Comparator.comparing(TimelineEventoResponse::dataHora));
+        return eventos;
+    }
+
+    @Transactional
+    public TimelineEventoResponse registrarOcorrencia(Long id, OcorrenciaPedidoRequest dados, Long usuarioId) {
+        var pedido = buscar(id);
+        if (pedido.getStatus().isEncerrado()) {
+            throw new OperacaoNaoPermitidaException("PEDIDO_ENCERRADO",
+                    "Pedido com status " + pedido.getStatus().getRotulo() + " não aceita novas ocorrências");
+        }
+        var ocorrencia = new OcorrenciaPedido(
+                pedido,
+                usuario(usuarioId),
+                dados.tipo(),
+                dados.descricao(),
+                dados.data(),
+                clock.instant());
+        return TimelineEventoResponse.deOcorrencia(ocorrencias.saveAndFlush(ocorrencia));
+    }
+
+    private record DadosValidados(Cliente cliente, List<Pedido.Item> itens) {
+    }
 
     private DadosValidados validar(PedidoRequest dados, LocalDate prazoAtual, LocalDate hoje) {
         var erros = new LinkedHashMap<String, String>();
         var cliente = clientes.findById(dados.clienteId()).orElse(null);
-        if (cliente == null) erros.put("clienteId", "Cliente não encontrado");
+        if (cliente == null)
+            erros.put("clienteId", "Cliente não encontrado");
 
         var ids = dados.itens().stream().map(ItemPedidoRequest::produtoId).collect(Collectors.toSet());
         Map<Long, Produto> encontrados = produtos.findAllById(ids).stream()
@@ -123,23 +172,28 @@ public class PedidoService {
         for (int i = 0; i < dados.itens().size(); i++) {
             var item = dados.itens().get(i);
             var produto = encontrados.get(item.produtoId());
-            if (produto == null) erros.put("itens[" + i + "].produtoId", "Produto não encontrado");
-            else if (!usados.add(item.produtoId())) erros.put("itens[" + i + "].produtoId", "Produto repetido no pedido");
-            else itens.add(new Pedido.Item(produto, item.quantidade()));
+            if (produto == null)
+                erros.put("itens[" + i + "].produtoId", "Produto não encontrado");
+            else if (!usados.add(item.produtoId()))
+                erros.put("itens[" + i + "].produtoId", "Produto repetido no pedido");
+            else
+                itens.add(new Pedido.Item(produto, item.quantidade()));
         }
 
         boolean prazoAlterado = !dados.prazoEntrega().equals(prazoAtual);
         if (prazoAlterado && dados.prazoEntrega().isBefore(hoje)) {
             erros.put("prazoEntrega", "O prazo de entrega não pode ser anterior a hoje");
         }
-        if (!erros.isEmpty()) throw new DadosInvalidosException(erros);
+        if (!erros.isEmpty())
+            throw new DadosInvalidosException(erros);
         return new DadosValidados(cliente, itens);
     }
 
     private String gerarCodigo() {
         for (int tentativa = 0; tentativa < TENTATIVAS_CODIGO; tentativa++) {
             var codigo = gerador.gerar();
-            if (!pedidos.existsByCodigoConsulta(codigo)) return codigo;
+            if (!pedidos.existsByCodigoConsulta(codigo))
+                return codigo;
         }
         throw new OperacaoNaoPermitidaException("CODIGO_CONSULTA_INDISPONIVEL",
                 "Não foi possível reservar um código de consulta. Tente novamente");
@@ -159,5 +213,21 @@ public class PedidoService {
 
     private LocalDate hoje() {
         return LocalDate.now(clock.withZone(FUSO));
+    }
+
+    @Transactional(readOnly = true)
+    public AcompanhamentoPedidoResponse acompanharPorCodigo(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            throw new PedidoNaoEncontradoException();
+        }
+        var pedido = pedidos.findByCodigoConsultaIgnoreCase(codigo.strip())
+                .orElseThrow(PedidoNaoEncontradoException::new);
+
+        var eventos = new ArrayList<TimelineEventoResponse>();
+        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
+        ocorrencias.buscarPorPedidoId(pedido.getId()).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
+        eventos.sort(Comparator.comparing(TimelineEventoResponse::dataHora));
+
+        return AcompanhamentoPedidoResponse.from(pedido, hoje(), clock.instant(), eventos);
     }
 }

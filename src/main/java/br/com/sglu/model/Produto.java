@@ -39,25 +39,41 @@ public class Produto {
         this.codigo = normalizarCodigo(codigo);
         this.nome = Objects.requireNonNull(nome).strip();
         this.estoqueMinimo = Objects.requireNonNull(estoqueMinimo);
-        if (estoqueMinimo < 0) throw new IllegalArgumentException("Estoque mínimo não pode ser negativo");
+        if (estoqueMinimo < 0)
+            throw new IllegalArgumentException("Estoque mínimo não pode ser negativo");
     }
 
     public static String normalizarCodigo(String codigo) {
         return Objects.requireNonNull(codigo).strip().toUpperCase(Locale.ROOT);
     }
 
-    public Long getId() { return id; }
-    public String getCodigo() { return codigo; }
-    public String getNome() { return nome; }
-    public Integer getEstoqueMinimo() { return estoqueMinimo; }
-    public Integer getSaldo() { return saldo; }
+    public Long getId() {
+        return id;
+    }
+
+    public String getCodigo() {
+        return codigo;
+    }
+
+    public String getNome() {
+        return nome;
+    }
+
+    public Integer getEstoqueMinimo() {
+        return estoqueMinimo;
+    }
+
+    public Integer getSaldo() {
+        return saldo;
+    }
 
     public boolean estaNoOuAbaixoDoMinimo() {
         return saldo <= estoqueMinimo;
     }
 
     public void registrarEntrada(int quantidade) {
-        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        if (quantidade <= 0)
+            throw new IllegalArgumentException("Quantidade deve ser maior que zero");
         try {
             saldo = Math.addExact(saldo, quantidade);
         } catch (ArithmeticException exception) {
@@ -67,10 +83,18 @@ public class Produto {
     }
 
     public void registrarSaida(int quantidade) {
-        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        if (quantidade <= 0)
+            throw new IllegalArgumentException("Quantidade deve ser maior que zero");
         if (saldo < quantidade) {
             throw new EstoqueInsuficienteException(List.of(EstoqueInsuficienteException.Item.from(this, quantidade)));
         }
         saldo -= quantidade;
+    }
+
+    public void ajustarSaldo(int novoSaldo) {
+        if (novoSaldo < 0) {
+            throw new IllegalArgumentException("Saldo de produto nao pode ser negativo");
+        }
+        this.saldo = novoSaldo;
     }
 }

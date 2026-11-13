@@ -1,5 +1,7 @@
 package br.com.sglu;
 
+import br.com.sglu.support.BancoDeTeste;
+
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Usuario;
 import br.com.sglu.repository.UsuarioRepository;
@@ -32,6 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(AuthIntegrationTest.ProtectedEndpoints.class)
 class AuthIntegrationTest {
     private static final String PASSWORD = "senha-teste-123";
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired UsuarioRepository users;
@@ -43,7 +46,7 @@ class AuthIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        users.deleteAll();
+        BancoDeTeste.limpar(jdbc);
         bootstrap.inicializar("Administrador", "admin@example.com", PASSWORD);
         admin = users.findByEmail("admin@example.com").orElseThrow();
         users.save(new Usuario("Operador", "operador@example.com", passwords.encode(PASSWORD), Perfil.OPERADOR));

@@ -8,6 +8,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.Locale;
 import java.util.Objects;
+import br.com.sglu.exception.OperacaoNaoPermitidaException;
+import br.com.sglu.exception.EstoqueInsuficienteException;
+import java.util.List;
 
 @Entity
 @Table(name = "produtos")
@@ -24,6 +27,9 @@ public class Produto {
 
     @Column(name = "estoque_minimo", nullable = false)
     private Integer estoqueMinimo;
+
+    @Column(nullable = false)
+    private Integer saldo = 0;
 
     protected Produto() {
         // Required by JPA.
@@ -44,4 +50,27 @@ public class Produto {
     public String getCodigo() { return codigo; }
     public String getNome() { return nome; }
     public Integer getEstoqueMinimo() { return estoqueMinimo; }
+    public Integer getSaldo() { return saldo; }
+
+    public boolean estaNoOuAbaixoDoMinimo() {
+        return saldo <= estoqueMinimo;
+    }
+
+    public void registrarEntrada(int quantidade) {
+        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        try {
+            saldo = Math.addExact(saldo, quantidade);
+        } catch (ArithmeticException exception) {
+            throw new OperacaoNaoPermitidaException("SALDO_LIMITE_EXCEDIDO",
+                    "A entrada ultrapassa o limite de 2.147.483.647 unidades do produto");
+        }
+    }
+
+    public void registrarSaida(int quantidade) {
+        if (quantidade <= 0) throw new IllegalArgumentException("Quantidade deve ser maior que zero");
+        if (saldo < quantidade) {
+            throw new EstoqueInsuficienteException(List.of(EstoqueInsuficienteException.Item.from(this, quantidade)));
+        }
+        saldo -= quantidade;
+    }
 }

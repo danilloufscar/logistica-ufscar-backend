@@ -43,15 +43,17 @@ public class PedidoService {
     private final UsuarioRepository usuarios;
     private final GeradorCodigoConsulta gerador;
     private final Clock clock;
+    private final DespachoEstoqueService despacho;
 
     public PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
-                         UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock) {
+                         UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock, DespachoEstoqueService despacho) {
         this.pedidos = pedidos;
         this.clientes = clientes;
         this.produtos = produtos;
         this.usuarios = usuarios;
         this.gerador = gerador;
         this.clock = clock;
+        this.despacho = despacho;
     }
 
     @Transactional
@@ -79,7 +81,7 @@ public class PedidoService {
     @Transactional
     public PedidoResponse editar(Long id, PedidoRequest dados) {
         var hoje = hoje();
-        var pedido = buscar(id);
+        var pedido = buscarParaAtualizar(id);
         var validados = validar(dados, pedido.getPrazoEntrega(), hoje);
         pedido.editar(validados.cliente(), dados.enderecoEntrega(), dados.prazoEntrega(), validados.itens());
         return PedidoResponse.from(pedido, hoje);
@@ -87,19 +89,22 @@ public class PedidoService {
 
     @Transactional
     public PedidoResponse cancelar(Long id, Long usuarioId) {
-        var pedido = buscar(id);
+        var pedido = buscarParaAtualizar(id);
         pedido.cancelar(usuario(usuarioId), clock.instant());
         return PedidoResponse.from(pedido, hoje());
     }
 
     @Transactional
     public PedidoResponse avancar(Long id, StatusPedido statusAtual, Long usuarioId) {
-        var pedido = buscar(id);
+        var pedido = buscarParaAtualizar(id);
         if (pedido.getStatus() != statusAtual) {
             throw new OperacaoNaoPermitidaException("STATUS_DESATUALIZADO", "O pedido já está com status "
                     + pedido.getStatus().getRotulo() + ". Atualize a página e tente novamente");
         }
-        pedido.avancar(usuario(usuarioId), clock.instant());
+        var usuario = usuario(usuarioId);
+        var agora = clock.instant();
+        if (pedido.getStatus() == StatusPedido.EM_SEPARACAO) despacho.baixar(pedido, usuario, agora);
+        pedido.avancar(usuario, agora);
         return PedidoResponse.from(pedido, hoje());
     }
 
@@ -136,11 +141,16 @@ public class PedidoService {
             var codigo = gerador.gerar();
             if (!pedidos.existsByCodigoConsulta(codigo)) return codigo;
         }
-        throw new IllegalStateException("Não foi possível gerar um código de consulta único");
+        throw new OperacaoNaoPermitidaException("CODIGO_CONSULTA_INDISPONIVEL",
+                "Não foi possível reservar um código de consulta. Tente novamente");
     }
 
     private Pedido buscar(Long id) {
         return pedidos.findById(id).orElseThrow(PedidoNaoEncontradoException::new);
+    }
+
+    private Pedido buscarParaAtualizar(Long id) {
+        return pedidos.buscarParaAtualizar(id).orElseThrow(PedidoNaoEncontradoException::new);
     }
 
     private Usuario usuario(Long id) {

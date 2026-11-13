@@ -77,17 +77,19 @@ public class PedidoController {
         throw new SessaoInvalidaException();
     }
 
-    @GetMapping("/{id}/timeline")
-    public List<TimelineEventoResponse> timeline(@PathVariable Long id) {
-        return service.timeline(id);
-    }
-
     @PostMapping("/{id}/ocorrencias")
     @ResponseStatus(HttpStatus.CREATED)
     public TimelineEventoResponse registrarOcorrencia(@PathVariable Long id,
             @Valid @RequestBody OcorrenciaPedidoRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         return service.registrarOcorrencia(id, request, usuarioId(jwt));
+    }
+
+    @GetMapping("/{id}/timeline")
+    public org.springframework.http.ResponseEntity<List<TimelineEventoResponse>> timeline(@PathVariable Long id) {
+        return org.springframework.http.ResponseEntity.ok()
+                .cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(service.timeline(id));
     }
 
 }

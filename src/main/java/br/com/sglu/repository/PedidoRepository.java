@@ -30,9 +30,13 @@ public interface PedidoRepository extends JpaRepository<Pedido, Long>, JpaSpecif
     static Specification<Pedido> filtro(StatusPedido status, Long clienteId) {
         return (root, query, criteria) -> {
             var condicoes = new ArrayList<Predicate>();
-            if (status != null) condicoes.add(criteria.equal(root.get("status"), status));
-            if (clienteId != null) condicoes.add(criteria.equal(root.get("cliente").get("id"), clienteId));
+            if (status != null)
+                condicoes.add(criteria.equal(root.get("status"), status));
+            if (clienteId != null)
+                condicoes.add(criteria.equal(root.get("cliente").get("id"), clienteId));
             return criteria.and(condicoes.toArray(Predicate[]::new));
         };
     }
+
+    Optional<Pedido> findByCodigoConsultaIgnoreCase(String codigoConsulta);
 }

@@ -1,5 +1,6 @@
 package br.com.sglu.service;
 
+import br.com.sglu.dto.pedido.AcompanhamentoPedidoResponse;
 import br.com.sglu.dto.pedido.ItemPedidoRequest;
 import br.com.sglu.dto.pedido.OcorrenciaPedidoRequest;
 import br.com.sglu.dto.pedido.PedidoRequest;
@@ -212,5 +213,21 @@ public class PedidoService {
 
     private LocalDate hoje() {
         return LocalDate.now(clock.withZone(FUSO));
+    }
+
+    @Transactional(readOnly = true)
+    public AcompanhamentoPedidoResponse acompanharPorCodigo(String codigo) {
+        if (codigo == null || codigo.isBlank()) {
+            throw new PedidoNaoEncontradoException();
+        }
+        var pedido = pedidos.findByCodigoConsultaIgnoreCase(codigo.strip())
+                .orElseThrow(PedidoNaoEncontradoException::new);
+
+        var eventos = new ArrayList<TimelineEventoResponse>();
+        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
+        ocorrencias.buscarPorPedidoId(pedido.getId()).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
+        eventos.sort(Comparator.comparing(TimelineEventoResponse::dataHora));
+
+        return AcompanhamentoPedidoResponse.from(pedido, hoje(), clock.instant(), eventos);
     }
 }

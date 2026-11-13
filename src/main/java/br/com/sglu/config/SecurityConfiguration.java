@@ -27,7 +27,8 @@ public class SecurityConfiguration {
     }
 
     @Bean
-    AuthenticationManager authenticationManager(UserDetailsService userDetailsService, PasswordEncoder passwordEncoder) {
+    AuthenticationManager authenticationManager(UserDetailsService userDetailsService,
+            PasswordEncoder passwordEncoder) {
         var provider = new DaoAuthenticationProvider(userDetailsService);
         provider.setPasswordEncoder(passwordEncoder);
         return new ProviderManager(provider);
@@ -52,11 +53,14 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/acompanhamento/**").permitAll()
                         .requestMatchers("/api/usuarios", "/api/usuarios/**",
                                 "/api/estoque/ajustes", "/api/estoque/ajustes/**",
-                                "/api/relatorios", "/api/relatorios/**").hasRole("ADMINISTRADOR")
+                                "/api/relatorios", "/api/relatorios/**")
+                        .hasRole("ADMINISTRADOR")
                         .anyRequest().hasAnyRole("ADMINISTRADOR", "OPERADOR"))
-                .exceptionHandling(exceptions -> exceptions.authenticationEntryPoint(errors).accessDeniedHandler(errors))
+                .exceptionHandling(
+                        exceptions -> exceptions.authenticationEntryPoint(errors).accessDeniedHandler(errors))
                 .oauth2ResourceServer(resource -> resource
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(converter))
                         .authenticationEntryPoint(errors)

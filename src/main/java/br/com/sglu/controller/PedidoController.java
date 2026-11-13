@@ -87,6 +87,7 @@ public class PedidoController {
     public TimelineEventoResponse registrarOcorrencia(@PathVariable Long id,
             @Valid @RequestBody OcorrenciaPedidoRequest request,
             @AuthenticationPrincipal Jwt jwt) {
-        return service.registrarOcorrencia(id, request.descricao(), usuarioId(jwt));
+        return service.registrarOcorrencia(id, request, usuarioId(jwt));
     }
+
 }

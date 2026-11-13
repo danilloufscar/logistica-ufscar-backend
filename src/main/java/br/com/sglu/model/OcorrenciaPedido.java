@@ -2,6 +2,8 @@ package br.com.sglu.model;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -10,6 +12,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Objects;
 
 @Entity
@@ -28,8 +31,15 @@ public class OcorrenciaPedido {
     @JoinColumn(name = "usuario_id", nullable = false)
     private Usuario usuario;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private TipoOcorrencia tipo;
+
     @Column(nullable = false, length = 500)
     private String descricao;
+
+    @Column(name = "data_ocorrencia", nullable = false)
+    private LocalDate dataOcorrencia;
 
     @Column(name = "data_hora", nullable = false)
     private Instant dataHora;
@@ -38,13 +48,16 @@ public class OcorrenciaPedido {
         // Required by JPA.
     }
 
-    public OcorrenciaPedido(Pedido pedido, Usuario usuario, String descricao, Instant dataHora) {
+    public OcorrenciaPedido(Pedido pedido, Usuario usuario, TipoOcorrencia tipo, String descricao,
+            LocalDate dataOcorrencia, Instant dataHora) {
         this.pedido = Objects.requireNonNull(pedido);
         this.usuario = Objects.requireNonNull(usuario);
+        this.tipo = Objects.requireNonNull(tipo);
         this.descricao = Objects.requireNonNull(descricao).strip();
         if (this.descricao.isEmpty()) {
             throw new IllegalArgumentException("A descrição da ocorrência é obrigatória");
         }
+        this.dataOcorrencia = Objects.requireNonNull(dataOcorrencia);
         this.dataHora = Objects.requireNonNull(dataHora);
     }
 
@@ -60,8 +73,16 @@ public class OcorrenciaPedido {
         return usuario;
     }
 
+    public TipoOcorrencia getTipo() {
+        return tipo;
+    }
+
     public String getDescricao() {
         return descricao;
+    }
+
+    public LocalDate getDataOcorrencia() {
+        return dataOcorrencia;
     }
 
     public Instant getDataHora() {

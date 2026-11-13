@@ -69,7 +69,7 @@ class PedidosMigrationTest {
                 try (var banco = new Banco()) {
                         banco.migrar(null);
                         assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM pedidos", Integer.class)).isZero();
-                        assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("8");
+                        assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("9");
                 }
         }
 

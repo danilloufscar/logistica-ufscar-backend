@@ -1,6 +1,7 @@
 package br.com.sglu.service;
 
 import br.com.sglu.dto.pedido.ItemPedidoRequest;
+import br.com.sglu.dto.pedido.OcorrenciaPedidoRequest;
 import br.com.sglu.dto.pedido.PedidoRequest;
 import br.com.sglu.dto.pedido.PedidoResponse;
 import br.com.sglu.dto.pedido.PedidoResumoResponse;
@@ -24,19 +25,17 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import br.com.sglu.dto.pedido.TimelineEventoResponse;
-import br.com.sglu.model.OcorrenciaPedido;
-import br.com.sglu.repository.OcorrenciaPedidoRepository;
 
 @Service
 public class PedidoService {
@@ -51,11 +50,9 @@ public class PedidoService {
     private final GeradorCodigoConsulta gerador;
     private final Clock clock;
     private final DespachoEstoqueService despacho;
-
-    // 1. Adicione o campo na classe:
     private final OcorrenciaPedidoRepository ocorrencias;
 
-    @org.springframework.beans.factory.annotation.Autowired
+    @Autowired
     public PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
             UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock,
             DespachoEstoqueService despacho, OcorrenciaPedidoRepository ocorrencias) {
@@ -128,6 +125,35 @@ public class PedidoService {
         return PedidoResponse.from(pedido, hoje());
     }
 
+    @Transactional(readOnly = true)
+    public List<TimelineEventoResponse> timeline(Long id) {
+        var pedido = buscar(id);
+        var eventos = new ArrayList<TimelineEventoResponse>();
+
+        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
+        ocorrencias.buscarPorPedidoId(id).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
+
+        eventos.sort(Comparator.comparing(TimelineEventoResponse::dataHora));
+        return eventos;
+    }
+
+    @Transactional
+    public TimelineEventoResponse registrarOcorrencia(Long id, OcorrenciaPedidoRequest dados, Long usuarioId) {
+        var pedido = buscar(id);
+        if (pedido.getStatus().isEncerrado()) {
+            throw new OperacaoNaoPermitidaException("PEDIDO_ENCERRADO",
+                    "Pedido com status " + pedido.getStatus().getRotulo() + " não aceita novas ocorrências");
+        }
+        var ocorrencia = new OcorrenciaPedido(
+                pedido,
+                usuario(usuarioId),
+                dados.tipo(),
+                dados.descricao(),
+                dados.data(),
+                clock.instant());
+        return TimelineEventoResponse.deOcorrencia(ocorrencias.saveAndFlush(ocorrencia));
+    }
+
     private record DadosValidados(Cliente cliente, List<Pedido.Item> itens) {
     }
 
@@ -186,25 +212,5 @@ public class PedidoService {
 
     private LocalDate hoje() {
         return LocalDate.now(clock.withZone(FUSO));
-    }
-
-    // 3. Adicione os métodos de Timeline (RF13) e Ocorrência:
-    @Transactional(readOnly = true)
-    public List<TimelineEventoResponse> timeline(Long id) {
-        var pedido = buscar(id);
-        var eventos = new ArrayList<TimelineEventoResponse>();
-
-        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
-        ocorrencias.buscarPorPedidoId(id).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
-
-        eventos.sort(java.util.Comparator.comparing(TimelineEventoResponse::dataHora));
-        return eventos;
-    }
-
-    @Transactional
-    public TimelineEventoResponse registrarOcorrencia(Long id, String descricao, Long usuarioId) {
-        var pedido = buscar(id);
-        var ocorrencia = new OcorrenciaPedido(pedido, usuario(usuarioId), descricao, clock.instant());
-        return TimelineEventoResponse.deOcorrencia(ocorrencias.saveAndFlush(ocorrencia));
     }
 }

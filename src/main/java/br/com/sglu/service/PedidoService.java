@@ -140,7 +140,8 @@ public class PedidoService {
 
     @Transactional
     public TimelineEventoResponse registrarOcorrencia(Long id, OcorrenciaPedidoRequest dados, Long usuarioId) {
-        var pedido = buscar(id);
+        // Serializa o registro com avanço/cancelamento para conferir o estado vigente.
+        var pedido = buscarParaAtualizar(id);
         if (pedido.getStatus().isEncerrado()) {
             throw new OperacaoNaoPermitidaException("PEDIDO_ENCERRADO",
                     "Pedido com status " + pedido.getStatus().getRotulo() + " não aceita novas ocorrências");

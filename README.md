@@ -245,3 +245,17 @@ Se faltar saldo, a API retorna `409 ESTOQUE_INSUFICIENTE`, sem alterar o pedido,
 A migração V6 permite SAIDA, vincula a movimentação ao pedido e impede saídas duplicadas do mesmo produto/pedido. Preserva saldos e entradas existentes. Pedidos que já estavam despachados antes da V6 não sofrem baixa retroativa. A saída registra quantidade positiva, usuário da sessão, instante do servidor e data no fuso America/Sao_Paulo.
 
 Validação: crie um pedido com dois produtos, sendo um insuficiente; avance para separação e tente despachar. Confira 409, status e saldos intactos. Reponha o que falta pelo RF08, tente novamente e confira a baixa dos dois produtos, histórico e consulta RF10. Testes cobrem rollback real de movimentação/histórico, concorrência entre pedidos, duplicidade, entrada concorrente e edição/cancelamento simultâneos. Para executar em PostgreSQL temporário, inclua `DespachoIntegrationTest,PedidosIntegrationTest,EstoqueIntegrationTest,PedidosMigrationTest` na seleção de testes; nunca aponte para uma base com dados de desenvolvimento.
+
+## Inventário e movimentações — RF11 / RF12
+
+`POST /api/estoque/ajustes` é exclusivo do Administrador. Recebe `produtoId`, `quantidadeContada` (inteiro de 0 a 2147483647) e `justificativa` obrigatória de até 500 caracteres. A quantidade contada substitui o saldo; a diferença gera AJUSTE_ENTRADA ou AJUSTE_SAIDA, com quantidade positiva, na mesma transação e sob bloqueio do produto. Contagem igual ao saldo retorna 400 no campo quantidadeContada e não gera movimento. Data e instante do ajuste usam a mesma leitura do relógio; a data considera America/Sao_Paulo.
+
+`GET /api/estoque/{produtoId}/movimentacoes` está disponível para Administrador e Operador. Retorna entradas, saídas e ajustes, com data, tipo, quantidade, responsável, pedido e justificativa. Ordenação: data, instante de registro e id decrescentes. Produto sem movimentos retorna []; produto inexistente retorna 400. As migrações existentes V7/V9 suportam os ajustes; esta integração não adiciona migração.
+
+Para validar: registre entrada de 10, ajuste para 7, depois 12 e depois zero. Confira saldo e histórico; repita o saldo zero e confirme 400 sem novo movimento. Operador deve receber 403 no ajuste e 200 na consulta. A suíte inclui teste de data na virada do dia UTC/São Paulo.
+
+## RF13 e RF14 — timeline e ocorrências
+
+Administradores e Operadores consultam `GET /api/pedidos/{id}/timeline` e registram ocorrências em `POST /api/pedidos/{id}/ocorrencias`. O corpo contém tipo (ATRASO, AVARIA ou DESTINATARIO_AUSENTE), descricao obrigatória com até 500 caracteres e data obrigatória. O autor vem da sessão; o instante do registro vem do servidor. O registro preserva status e estoque. Pedidos entregues/cancelados recusam novas ocorrências com 409. O bloqueio transacional do pedido serializa ocorrências com avanço/cancelamento.
+
+A timeline reúne status e ocorrências em ordem cronológica de registro, com autoria e data da ocorrência quando aplicável. Testes incluem validações, autenticação, preservação do status e registro concorrente com encerramento.

@@ -14,7 +14,7 @@ import br.com.sglu.repository.MovimentacaoEstoqueRepository;
 import br.com.sglu.repository.ProdutoRepository;
 import br.com.sglu.repository.UsuarioRepository;
 import java.time.Clock;
-import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.List;
 import org.springframework.data.domain.Sort;
@@ -84,13 +84,14 @@ public class EstoqueService {
 
                 produto.ajustarSaldo(quantidadeContada);
 
+                var agora = clock.instant();
                 var movimentacao = MovimentacaoEstoque.ajuste(
                                 produto,
                                 tipo,
                                 quantidadeAjuste,
-                                LocalDate.now(clock),
+                                agora.atZone(ZoneId.of("America/Sao_Paulo")).toLocalDate(),
                                 usuario,
-                                clock.instant(),
+                                agora,
                                 dados.justificativa().trim());
 
                 var salva = movimentacoes.saveAndFlush(movimentacao);

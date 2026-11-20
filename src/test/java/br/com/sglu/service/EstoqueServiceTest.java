@@ -114,4 +114,18 @@ class EstoqueServiceTest {
         when(usuarios.findById(2L)).thenReturn(Optional.of(usuario));
         when(produtos.buscarParaAtualizarEstoque(1L)).thenReturn(Optional.of(produto));
     }
+
+    @Test
+    void ajusteUsaDiaDeSaoPauloEOMesmoInstanteDoRegistro() {
+        var instante = Instant.parse("2026-11-10T01:30:00Z");
+        service = new EstoqueService(produtos, movimentacoes, usuarios, Clock.fixed(instante, ZoneOffset.UTC));
+        referenciasValidas();
+        when(movimentacoes.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        var ajuste = service.ajustarInventario(new br.com.sglu.dto.estoque.AjusteEstoqueRequest(
+                1L, 5, " Contagem física "), 2L);
+        assertThat(ajuste.data()).isEqualTo(LocalDate.of(2026, 11, 9));
+        assertThat(ajuste.registradoEm()).isEqualTo(instante);
+        assertThat(ajuste.justificativa()).isEqualTo("Contagem física");
+        assertThat(ajuste.saldoAtual()).isEqualTo(5);
+    }
 }

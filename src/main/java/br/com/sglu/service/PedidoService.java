@@ -33,7 +33,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,7 +52,6 @@ public class PedidoService {
     private final DespachoEstoqueService despacho;
     private final OcorrenciaPedidoRepository ocorrencias;
 
-    @Autowired
     public PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
             UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock,
             DespachoEstoqueService despacho, OcorrenciaPedidoRepository ocorrencias) {
@@ -65,12 +63,6 @@ public class PedidoService {
         this.clock = clock;
         this.despacho = despacho;
         this.ocorrencias = ocorrencias;
-    }
-
-    PedidoService(PedidoRepository pedidos, ClienteRepository clientes, ProdutoRepository produtos,
-            UsuarioRepository usuarios, GeradorCodigoConsulta gerador, Clock clock,
-            DespachoEstoqueService despacho) {
-        this(pedidos, clientes, produtos, usuarios, gerador, clock, despacho, null);
     }
 
     @Transactional
@@ -223,12 +215,7 @@ public class PedidoService {
         }
         var pedido = pedidos.findByCodigoConsultaIgnoreCase(codigo.strip())
                 .orElseThrow(PedidoNaoEncontradoException::new);
-
-        var eventos = new ArrayList<TimelineEventoResponse>();
-        pedido.getHistorico().forEach(h -> eventos.add(TimelineEventoResponse.deStatus(h)));
-        ocorrencias.buscarPorPedidoId(pedido.getId()).forEach(o -> eventos.add(TimelineEventoResponse.deOcorrencia(o)));
-        eventos.sort(Comparator.comparing(TimelineEventoResponse::dataHora));
-
-        return AcompanhamentoPedidoResponse.from(pedido, hoje(), clock.instant(), eventos);
+        // RF17: a consulta pública mostra só status, prazo e mudanças de status.
+        return AcompanhamentoPedidoResponse.from(pedido, clock.instant());
     }
 }

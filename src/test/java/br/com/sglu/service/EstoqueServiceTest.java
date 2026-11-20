@@ -1,6 +1,7 @@
 package br.com.sglu.service;
 
 import br.com.sglu.dto.estoque.EntradaEstoqueRequest;
+import br.com.sglu.dto.estoque.MovimentacaoEstoqueResponse;
 import br.com.sglu.exception.DadosInvalidosException;
 import br.com.sglu.exception.OperacaoNaoPermitidaException;
 import br.com.sglu.exception.SessaoInvalidaException;
@@ -12,10 +13,12 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.List;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -127,5 +130,57 @@ class EstoqueServiceTest {
         assertThat(ajuste.registradoEm()).isEqualTo(instante);
         assertThat(ajuste.justificativa()).isEqualTo("Contagem física");
         assertThat(ajuste.saldoAtual()).isEqualTo(5);
+    }
+
+    @Test
+    void entradaGravaOSaldoAposAMovimentacao() {
+        referenciasValidas();
+        when(movimentacoes.saveAndFlush(any())).thenAnswer(call -> call.getArgument(0));
+        produto.registrarEntrada(3);
+        service.registrarEntrada(new EntradaEstoqueRequest(1L, 4, DATA), 2L);
+        var gravada = ArgumentCaptor.forClass(MovimentacaoEstoque.class);
+        verify(movimentacoes).saveAndFlush(gravada.capture());
+        assertThat(gravada.getValue().getSaldoApos()).isEqualTo(7);
+    }
+
+    @Test
+    void historicoDoProdutoTrazSaldoAposAutorEJustificativa() {
+        produto.registrarEntrada(10);
+        var entrada = MovimentacaoEstoque.entrada(produto, 10, DATA, usuario, AGORA);
+        produto.ajustarSaldo(8);
+        var ajuste = MovimentacaoEstoque.ajuste(produto, TipoMovimentacaoEstoque.AJUSTE_SAIDA, 2, DATA, usuario,
+                AGORA.plusSeconds(60), "Avaria na prateleira");
+        when(produtos.existsById(1L)).thenReturn(true);
+        when(movimentacoes.buscarPorProdutoId(1L)).thenReturn(List.of(ajuste, entrada));
+
+        var historico = service.listarMovimentacoesPorProduto(1L);
+
+        assertThat(historico).extracting(MovimentacaoEstoqueResponse::tipo, MovimentacaoEstoqueResponse::quantidade,
+                MovimentacaoEstoqueResponse::saldoApos, MovimentacaoEstoqueResponse::justificativa,
+                MovimentacaoEstoqueResponse::usuarioResponsavel, MovimentacaoEstoqueResponse::pedidoId)
+                .containsExactly(
+                        tuple(TipoMovimentacaoEstoque.AJUSTE_SAIDA, 2, 8, "Avaria na prateleira", "Operador", null),
+                        tuple(TipoMovimentacaoEstoque.ENTRADA, 10, 10, null, "Operador", null));
+        verifyNoInteractions(usuarios);
+    }
+
+    @Test
+    void historicoDeProdutoInexistenteGeraErroNoCampoSemConsultarMovimentacoes() {
+        when(produtos.existsById(9L)).thenReturn(false);
+        assertThatThrownBy(() -> service.listarMovimentacoesPorProduto(9L))
+                .isInstanceOfSatisfying(DadosInvalidosException.class,
+                        erro -> assertThat(erro.getDetalhes()).containsEntry("produtoId", "Produto não encontrado"));
+        verifyNoInteractions(movimentacoes);
+    }
+
+    @Test
+    void ultimasEntradasLimitamAQuantidadeEntreUmECinquenta() {
+        when(movimentacoes.buscarRecentesPorTipo(eq(TipoMovimentacaoEstoque.ENTRADA), any())).thenReturn(List.of());
+        service.listarUltimasEntradas(0);
+        service.listarUltimasEntradas(5);
+        service.listarUltimasEntradas(500);
+        var paginas = ArgumentCaptor.forClass(Pageable.class);
+        verify(movimentacoes, times(3)).buscarRecentesPorTipo(eq(TipoMovimentacaoEstoque.ENTRADA), paginas.capture());
+        assertThat(paginas.getAllValues()).extracting(Pageable::getPageSize).containsExactly(1, 5, 50);
     }
 }

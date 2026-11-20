@@ -2,6 +2,8 @@ package br.com.sglu;
 
 import com.zaxxer.hikari.HikariDataSource;
 import java.sql.DriverManager;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.FlywayException;
@@ -69,7 +71,25 @@ class PedidosMigrationTest {
                 try (var banco = new Banco()) {
                         banco.migrar(null);
                         assertThat(banco.jdbc.queryForObject("SELECT COUNT(*) FROM pedidos", Integer.class)).isZero();
-                        assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("9");
+                        assertThat(banco.flyway(null).info().current().getVersion().toString()).isEqualTo("10");
+                }
+        }
+
+        @Test
+        void saldoAposEPreenchidoNasMovimentacoesExistentesNaOrdemEmQueForamGravadas() throws Exception {
+                try (var banco = new Banco()) {
+                        banco.legado(1);
+                        banco.migrar("9");
+                        String inserir = "INSERT INTO movimentacoes_estoque(produto_id,tipo,quantidade,data,registrado_em,usuario_id,justificativa) VALUES(1,?,?,CURRENT_DATE,?,1,?)";
+                        var inicio = OffsetDateTime.of(2026, 11, 1, 10, 0, 0, 0, ZoneOffset.UTC);
+                        // Gravadas fora de ordem para conferir que o cálculo segue o instante do registro.
+                        banco.jdbc.update(inserir, "ENTRADA", 5, inicio.plusHours(2), null);
+                        banco.jdbc.update(inserir, "ENTRADA", 10, inicio, null);
+                        banco.jdbc.update(inserir, "AJUSTE_SAIDA", 3, inicio.plusHours(1), "Contagem");
+                        banco.migrar(null);
+                        assertThat(banco.jdbc.queryForList(
+                                        "SELECT saldo_apos FROM movimentacoes_estoque ORDER BY registrado_em", Integer.class))
+                                        .containsExactly(10, 7, 12);
                 }
         }
 

@@ -104,8 +104,41 @@ class EstoqueMovimentacoesIntegrationTest {
                 .andExpect(jsonPath("$[0].tipo").value("AJUSTE_SAIDA"))
                 .andExpect(jsonPath("$[0].quantidade").value(3))
                 .andExpect(jsonPath("$[0].justificativa").value("Perda na armazenagem"))
+                .andExpect(jsonPath("$[0].saldoApos").value(17))
                 .andExpect(jsonPath("$[1].tipo").value("ENTRADA"))
-                .andExpect(jsonPath("$[1].quantidade").value(20));
+                .andExpect(jsonPath("$[1].quantidade").value(20))
+                .andExpect(jsonPath("$[1].saldoApos").value(20));
+    }
+
+    @Test
+    void deveListarAsUltimasEntradasPelaDataInformadaSemIncluirAjustes() throws Exception {
+        registrarEntrada(5, LocalDate.of(2026, 11, 1));
+        registrarEntrada(7, LocalDate.of(2026, 11, 3));
+        registrarEntrada(9, LocalDate.of(2026, 11, 2));
+        mvc.perform(post("/api/estoque/ajustes")
+                .header("Authorization", "Bearer " + adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(new AjusteEstoqueRequest(produto.getId(), 20, "Contagem mensal"))))
+                .andExpect(status().isCreated());
+
+        mvc.perform(get("/api/estoque/entradas").param("limite", "2")
+                .header("Authorization", "Bearer " + operadorToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].tipo").value("ENTRADA"))
+                .andExpect(jsonPath("$[0].quantidade").value(7))
+                .andExpect(jsonPath("$[0].saldoApos").value(12))
+                .andExpect(jsonPath("$[0].produtoNome").value(produto.getNome()))
+                .andExpect(jsonPath("$[1].quantidade").value(9))
+                .andExpect(jsonPath("$[1].saldoApos").value(21));
+    }
+
+    private void registrarEntrada(int quantidade, LocalDate data) throws Exception {
+        mvc.perform(post("/api/estoque/entradas")
+                .header("Authorization", "Bearer " + operadorToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(new EntradaEstoqueRequest(produto.getId(), quantidade, data))))
+                .andExpect(status().isCreated());
     }
 
     @Test

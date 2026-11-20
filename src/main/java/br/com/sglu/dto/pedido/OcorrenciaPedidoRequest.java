@@ -12,8 +12,4 @@ public record OcorrenciaPedidoRequest(
         @NotBlank(message = "A descrição da ocorrência é obrigatória") @Size(max = 500, message = "A descrição deve ter no máximo 500 caracteres") String descricao,
 
         @NotNull(message = "A data da ocorrência é obrigatória") LocalDate data) {
-    // Mantém compatibilidade com PedidoTimelineIntegrationTest
-    public OcorrenciaPedidoRequest(String descricao) {
-        this(TipoOcorrencia.ATRASO, descricao, LocalDate.now());
-    }
 }

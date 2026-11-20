@@ -29,6 +29,11 @@ public class EstoqueController {
         return service.listarSaldos();
     }
 
+    @GetMapping("/entradas")
+    public List<MovimentacaoEstoqueResponse> listarUltimasEntradas(@RequestParam(defaultValue = "5") int limite) {
+        return service.listarUltimasEntradas(limite);
+    }
+
     @PostMapping("/entradas")
     @ResponseStatus(HttpStatus.CREATED)
     public EntradaEstoqueResponse registrar(@Valid @RequestBody EntradaEstoqueRequest request,

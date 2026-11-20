@@ -89,7 +89,7 @@ class AcompanhamentoIntegrationTest {
     }
 
     @Test
-    void deveRetornarDadosAtualizadosSemCacheParaPollingDe30Segundos() throws Exception {
+    void consultaPublicaRetornaSoStatusPrazoELinhaDoTempoSemCache() throws Exception {
         var pedidoReq = new PedidoRequest(
                 cliente.getId(),
                 "Rua Vergueiro, 500",
@@ -107,14 +107,21 @@ class AcompanhamentoIntegrationTest {
         Long pedidoId = json.readTree(criacaoResp).get("id").asLong();
         String codigo = json.readTree(criacaoResp).get("codigo").asText();
 
-        // 1ª consulta pública (sem token JWT)
+        // 1ª consulta pública (sem token JWT): RF17 expõe só status, prazo e linha do tempo
         mvc.perform(get("/api/acompanhamento/{codigo}", codigo))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.codigo").value(codigo))
                 .andExpect(jsonPath("$.status").value("CRIADO"))
+                .andExpect(jsonPath("$.prazoEntrega").value(pedidoReq.prazoEntrega().toString()))
                 .andExpect(jsonPath("$.intervaloAtualizacaoSegundos").value(30))
-                .andExpect(jsonPath("$.timeline.length()").value(1));
+                .andExpect(jsonPath("$.timeline.length()").value(1))
+                .andExpect(jsonPath("$.timeline[0].status").value("CRIADO"))
+                .andExpect(jsonPath("$.timeline[0].dataHora").isNotEmpty())
+                .andExpect(jsonPath("$.timeline[0].usuario").doesNotExist())
+                .andExpect(jsonPath("$.itens").doesNotExist())
+                .andExpect(jsonPath("$.clienteNome").doesNotExist())
+                .andExpect(jsonPath("$.enderecoEntrega").doesNotExist());
 
         // Simula atualização no pedido (avanço de status + ocorrência) antes do próximo
         // ciclo de 30s
@@ -131,14 +138,15 @@ class AcompanhamentoIntegrationTest {
                 .content(json.writeValueAsString(ocorrencia)))
                 .andExpect(status().isCreated());
 
-        // 2ª consulta pública (ciclo seguinte do polling de 30s): deve refletir as
-        // mudanças imediatamente
+        // 2ª consulta pública (ciclo seguinte do polling de 30s): reflete o novo status
+        // na hora, mas não mostra a ocorrência, que é registro interno
         mvc.perform(get("/api/acompanhamento/{codigo}", codigo.toLowerCase()))
                 .andExpect(status().isOk())
                 .andExpect(header().string(HttpHeaders.CACHE_CONTROL, containsString("no-store")))
                 .andExpect(jsonPath("$.status").value("EM_SEPARACAO"))
-                .andExpect(jsonPath("$.timeline.length()").value(3))
-                .andExpect(jsonPath("$.timeline[2].tipoOcorrencia").value("ATRASO"));
+                .andExpect(jsonPath("$.timeline.length()").value(2))
+                .andExpect(jsonPath("$.timeline[1].status").value("EM_SEPARACAO"))
+                .andExpect(jsonPath("$.timeline[1].statusRotulo").value("Em separação"));
     }
 
     @Test

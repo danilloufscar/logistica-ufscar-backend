@@ -1,9 +1,12 @@
 package br.com.sglu.service;
 
+import br.com.sglu.dto.pedido.AcompanhamentoPedidoResponse;
 import br.com.sglu.dto.pedido.ItemPedidoRequest;
+import br.com.sglu.dto.pedido.OcorrenciaPedidoRequest;
 import br.com.sglu.dto.pedido.PedidoRequest;
 import br.com.sglu.dto.pedido.PedidoResponse;
 import br.com.sglu.dto.pedido.PedidoResumoResponse;
+import br.com.sglu.dto.pedido.TimelineEventoResponse;
 import br.com.sglu.exception.DadosInvalidosException;
 import br.com.sglu.exception.OperacaoNaoPermitidaException;
 import br.com.sglu.exception.PedidoNaoEncontradoException;
@@ -11,12 +14,15 @@ import br.com.sglu.exception.SessaoInvalidaException;
 import br.com.sglu.model.Cliente;
 import br.com.sglu.model.HistoricoStatusPedido;
 import br.com.sglu.model.ItemPedido;
+import br.com.sglu.model.OcorrenciaPedido;
 import br.com.sglu.model.Pedido;
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Produto;
 import br.com.sglu.model.StatusPedido;
+import br.com.sglu.model.TipoOcorrencia;
 import br.com.sglu.model.Usuario;
 import br.com.sglu.repository.ClienteRepository;
+import br.com.sglu.repository.OcorrenciaPedidoRepository;
 import br.com.sglu.repository.PedidoRepository;
 import br.com.sglu.repository.ProdutoRepository;
 import br.com.sglu.repository.UsuarioRepository;
@@ -65,6 +71,7 @@ class PedidoServiceTest {
     @Mock UsuarioRepository usuarios;
     @Mock GeradorCodigoConsulta gerador;
     @Mock DespachoEstoqueService despacho;
+    @Mock OcorrenciaPedidoRepository ocorrencias;
     PedidoService service;
 
     final Cliente cliente = comId(new Cliente("Comercial Silva", "(15) 3221-4400", "Rua das Flores, 120"), 1L);
@@ -74,7 +81,8 @@ class PedidoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PedidoService(pedidos, clientes, produtos, usuarios, gerador, Clock.fixed(AGORA, ZoneOffset.UTC), despacho);
+        service = new PedidoService(pedidos, clientes, produtos, usuarios, gerador, Clock.fixed(AGORA, ZoneOffset.UTC),
+                despacho, ocorrencias);
     }
 
     @Test
@@ -268,6 +276,101 @@ class PedidoServiceTest {
         assertThatThrownBy(() -> service.detalhar(99L)).isInstanceOf(PedidoNaoEncontradoException.class);
         assertThatThrownBy(() -> service.cancelar(5L, 7L)).isInstanceOf(SessaoInvalidaException.class);
         assertThat(pedido.getStatus()).isEqualTo(CRIADO);
+    }
+
+    // RF13: linha do tempo
+
+    @Test
+    void timelineIntercalaStatusEOcorrenciasEmOrdemCronologica() {
+        var pedido = comId(pedido(HOJE.plusDays(2)), 5L);
+        pedido.avancar(usuario, AGORA.plusSeconds(120));
+        var ocorrencia = new OcorrenciaPedido(pedido, usuario, TipoOcorrencia.AVARIA, "Caixa amassada", HOJE, AGORA.plusSeconds(60));
+        when(pedidos.findById(5L)).thenReturn(Optional.of(pedido));
+        when(ocorrencias.buscarPorPedidoId(5L)).thenReturn(List.of(ocorrencia));
+
+        var eventos = service.timeline(5L);
+
+        assertThat(eventos).extracting(TimelineEventoResponse::tipo, TimelineEventoResponse::status, TimelineEventoResponse::tipoOcorrencia)
+                .containsExactly(
+                        tuple(TimelineEventoResponse.TipoEvento.STATUS, CRIADO, null),
+                        tuple(TimelineEventoResponse.TipoEvento.OCORRENCIA, null, TipoOcorrencia.AVARIA),
+                        tuple(TimelineEventoResponse.TipoEvento.STATUS, EM_SEPARACAO, null));
+        assertThat(eventos.get(1).descricao()).isEqualTo("Caixa amassada");
+        assertThat(eventos.get(1).usuario().nome()).isEqualTo("Ana");
+        assertThat(eventos.get(2).dataHora()).isEqualTo(AGORA.plusSeconds(120));
+    }
+
+    @Test
+    void timelineDePedidoInexistenteNaoConsultaOcorrencias() {
+        when(pedidos.findById(99L)).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.timeline(99L)).isInstanceOf(PedidoNaoEncontradoException.class);
+        verifyNoInteractions(ocorrencias);
+    }
+
+    // RF14: ocorrências
+
+    @Test
+    void registraOcorrenciaComTipoDataEAutorSemMudarOStatus() {
+        var pedido = comId(pedido(HOJE.plusDays(2)), 5L);
+        avancarAte(pedido, EM_TRANSITO);
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
+        when(usuarios.findById(7L)).thenReturn(Optional.of(usuario));
+        when(ocorrencias.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var resposta = service.registrarOcorrencia(5L,
+                new OcorrenciaPedidoRequest(TipoOcorrencia.DESTINATARIO_AUSENTE, "  Ninguém no local  ", HOJE), 7L);
+
+        assertThat(resposta.tipo()).isEqualTo(TimelineEventoResponse.TipoEvento.OCORRENCIA);
+        assertThat(resposta.tipoOcorrencia()).isEqualTo(TipoOcorrencia.DESTINATARIO_AUSENTE);
+        assertThat(resposta.descricao()).isEqualTo("Ninguém no local");
+        assertThat(resposta.dataOcorrencia()).isEqualTo(HOJE);
+        assertThat(resposta.dataHora()).isEqualTo(AGORA);
+        assertThat(resposta.usuario().id()).isEqualTo(7L);
+        assertThat(pedido.getStatus()).isEqualTo(EM_TRANSITO);
+        assertThat(pedido.getHistorico()).hasSize(4);
+    }
+
+    @Test
+    void recusaOcorrenciaEmPedidoEncerradoSemGravar() {
+        var pedido = comId(pedido(HOJE.plusDays(2)), 5L);
+        pedido.cancelar(usuario, AGORA);
+        when(pedidos.buscarParaAtualizar(5L)).thenReturn(Optional.of(pedido));
+
+        assertThatThrownBy(() -> service.registrarOcorrencia(5L,
+                new OcorrenciaPedidoRequest(TipoOcorrencia.ATRASO, "Tarde demais", HOJE), 7L))
+                .isInstanceOfSatisfying(OperacaoNaoPermitidaException.class,
+                        erro -> assertThat(erro.getCodigo()).isEqualTo("PEDIDO_ENCERRADO"));
+        verifyNoInteractions(ocorrencias, usuarios);
+    }
+
+    // RF17: consulta pública
+
+    @Test
+    void consultaPublicaTrazSoStatusPrazoEMudancasDeStatus() {
+        var pedido = comId(pedido(HOJE.plusDays(3)), 5L);
+        pedido.avancar(usuario, AGORA.plusSeconds(60));
+        when(pedidos.findByCodigoConsultaIgnoreCase("ABCD2345")).thenReturn(Optional.of(pedido));
+
+        var resposta = service.acompanharPorCodigo(" ABCD2345 ");
+
+        assertThat(resposta.codigo()).isEqualTo("ABCD2345");
+        assertThat(resposta.status()).isEqualTo(EM_SEPARACAO);
+        assertThat(resposta.statusRotulo()).isEqualTo("Em separação");
+        assertThat(resposta.prazoEntrega()).isEqualTo(HOJE.plusDays(3));
+        assertThat(resposta.atualizadoEm()).isEqualTo(AGORA);
+        assertThat(resposta.intervaloAtualizacaoSegundos()).isEqualTo(30);
+        assertThat(resposta.timeline())
+                .extracting(AcompanhamentoPedidoResponse.Etapa::status, AcompanhamentoPedidoResponse.Etapa::dataHora)
+                .containsExactly(tuple(CRIADO, AGORA), tuple(EM_SEPARACAO, AGORA.plusSeconds(60)));
+        verifyNoInteractions(ocorrencias);
+    }
+
+    @Test
+    void consultaPublicaComCodigoVazioOuInexistenteRetornaNaoEncontrado() {
+        when(pedidos.findByCodigoConsultaIgnoreCase("ZZZZ9999")).thenReturn(Optional.empty());
+        assertThatThrownBy(() -> service.acompanharPorCodigo(" ")).isInstanceOf(PedidoNaoEncontradoException.class);
+        assertThatThrownBy(() -> service.acompanharPorCodigo(null)).isInstanceOf(PedidoNaoEncontradoException.class);
+        assertThatThrownBy(() -> service.acompanharPorCodigo("ZZZZ9999")).isInstanceOf(PedidoNaoEncontradoException.class);
     }
 
     private void dadosValidos() {

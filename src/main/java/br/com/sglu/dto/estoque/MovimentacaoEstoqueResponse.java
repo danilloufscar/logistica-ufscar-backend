@@ -16,7 +16,8 @@ public record MovimentacaoEstoqueResponse(
         Instant registradoEm,
         String usuarioResponsavel,
         Long pedidoId,
-        String justificativa) {
+        String justificativa,
+        Integer saldoApos) {
     public static MovimentacaoEstoqueResponse from(MovimentacaoEstoque m) {
         return new MovimentacaoEstoqueResponse(
                 m.getId(),
@@ -29,6 +30,7 @@ public record MovimentacaoEstoqueResponse(
                 m.getRegistradoEm(),
                 m.getUsuario().getNome(),
                 m.getPedido() != null ? m.getPedido().getId() : null,
-                m.getJustificativa());
+                m.getJustificativa(),
+                m.getSaldoApos());
     }
 }

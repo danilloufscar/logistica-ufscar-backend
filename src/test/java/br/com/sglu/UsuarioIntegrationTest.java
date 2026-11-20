@@ -1,5 +1,7 @@
 package br.com.sglu;
 
+import br.com.sglu.support.BancoDeTeste;
+
 import br.com.sglu.dto.usuario.CadastroUsuarioRequest;
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Usuario;
@@ -35,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 class UsuarioIntegrationTest {
     private static final String PASSWORD = "senha-ficticia-123";
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
     @Autowired PasswordEncoder passwords;
@@ -44,7 +47,7 @@ class UsuarioIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        users.deleteAll();
+        BancoDeTeste.limpar(jdbc);
         users.save(new Usuario("Administrador", "admin@example.com", passwords.encode(PASSWORD), Perfil.ADMINISTRADOR));
         users.save(new Usuario("Operador", "operador@example.com", passwords.encode(PASSWORD), Perfil.OPERADOR));
         adminToken = login("admin@example.com", PASSWORD);

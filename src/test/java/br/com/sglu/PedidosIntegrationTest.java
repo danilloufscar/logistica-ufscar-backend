@@ -1,5 +1,7 @@
 package br.com.sglu;
 
+import br.com.sglu.support.BancoDeTeste;
+
 import br.com.sglu.model.Cliente;
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Produto;
@@ -48,6 +50,10 @@ class PedidosIntegrationTest {
     @Autowired ProdutoRepository produtos;
     @Autowired PasswordEncoder passwords;
     @Autowired JdbcTemplate jdbc;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    br.com.sglu.service.GeradorCodigoConsulta gerador;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    br.com.sglu.repository.PedidoRepository pedidos;
     String adminToken;
     String operadorToken;
     Long clienteA;
@@ -57,10 +63,7 @@ class PedidosIntegrationTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        apagarPedidos();
-        produtos.deleteAll();
-        clientes.deleteAll();
-        usuarios.deleteAll();
+        BancoDeTeste.limpar(jdbc);
         String hash = passwords.encode(PASSWORD);
         usuarios.save(new Usuario("Administrador", "admin@example.com", hash, Perfil.ADMINISTRADOR));
         usuarios.save(new Usuario("Operador", "operador@example.com", hash, Perfil.OPERADOR));
@@ -74,7 +77,7 @@ class PedidosIntegrationTest {
 
     @AfterEach
     void apagarPedidos() {
-        jdbc.update("DELETE FROM pedidos");
+        BancoDeTeste.limpar(jdbc);
     }
 
     @Test
@@ -127,6 +130,7 @@ class PedidosIntegrationTest {
 
     @Test
     void avancaUmaEtapaPorVezAteEntregue() throws Exception {
+        abastecerCaixa();
         long id = criarId(clienteA, hoje().plusDays(3));
         String atual = "CRIADO";
         for (String proximo : List.of("EM_SEPARACAO", "DESPACHADO", "EM_TRANSITO", "ENTREGUE")) {
@@ -149,6 +153,7 @@ class PedidosIntegrationTest {
 
     @Test
     void editaECancelaSomenteAntesDoDespacho() throws Exception {
+        abastecerCaixa();
         long id = criarId(clienteA, hoje().plusDays(3));
         avancar(id, "CRIADO", adminToken).andExpect(status().isOk());
 
@@ -217,6 +222,25 @@ class PedidosIntegrationTest {
 
     private static LocalDate hoje() {
         return LocalDate.now(ZoneId.of("America/Sao_Paulo"));
+    }
+
+    private void abastecerCaixa() throws Exception {
+        mvc.perform(comToken(post("/api/estoque/entradas"), adminToken)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(Map.of("produtoId", caixa, "quantidade", 10, "data", hoje().toString()))))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void colisaoNaGravacaoRepeteEmOutraTransacaoSemPedidoOuHistoricoParcial() throws Exception {
+        org.mockito.Mockito.doReturn("ABCD2345", "ABCD2345", "WXYZ6789").when(gerador).gerar();
+        org.mockito.Mockito.doReturn(false).when(pedidos).existsByCodigoConsulta("ABCD2345");
+        criar(pedido(clienteA, hoje().plusDays(1), item(caixa, 1)), adminToken).andExpect(status().isCreated());
+        criar(pedido(clienteA, hoje().plusDays(1), item(caixa, 2)), adminToken).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.codigo").value("WXYZ6789"));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pedidos", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pedido_itens", Integer.class)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM pedido_historico", Integer.class)).isEqualTo(2);
     }
 
     @SafeVarargs

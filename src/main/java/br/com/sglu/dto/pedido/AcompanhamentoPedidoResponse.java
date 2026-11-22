@@ -1,47 +1,40 @@
 package br.com.sglu.dto.pedido;
 
+import br.com.sglu.model.HistoricoStatusPedido;
 import br.com.sglu.model.Pedido;
 import br.com.sglu.model.StatusPedido;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+/**
+ * Resposta pública do Portal do Cliente (RF17): somente status, prazo e as mudanças de status.
+ * Não expõe itens, cliente, endereço, usuários nem ocorrências internas.
+ */
 public record AcompanhamentoPedidoResponse(
         String codigo,
-        String clienteNome,
-        String enderecoEntrega,
-        LocalDate prazoEntrega,
         StatusPedido status,
         String statusRotulo,
-        boolean atrasado,
-        Instant criadoEm,
+        LocalDate prazoEntrega,
         Instant atualizadoEm,
         int intervaloAtualizacaoSegundos,
-        List<Item> itens,
-        List<TimelineEventoResponse> timeline) {
+        List<Etapa> timeline) {
     public static final int INTERVALO_POLLING_SEGUNDOS = 30;
 
-    public record Item(String codigoProduto, String nomeProduto, Integer quantidade) {
+    public record Etapa(StatusPedido status, String statusRotulo, Instant dataHora) {
+        static Etapa from(HistoricoStatusPedido registro) {
+            return new Etapa(registro.getStatus(), registro.getStatus().getRotulo(), registro.getDataHora());
+        }
     }
 
-    public static AcompanhamentoPedidoResponse from(Pedido pedido, LocalDate hoje, Instant agora,
-            List<TimelineEventoResponse> timeline) {
-        var itens = pedido.getItens().stream()
-                .map(i -> new Item(i.getProduto().getCodigo(), i.getProduto().getNome(), i.getQuantidade()))
-                .toList();
-
+    public static AcompanhamentoPedidoResponse from(Pedido pedido, Instant agora) {
         return new AcompanhamentoPedidoResponse(
                 pedido.getCodigoConsulta(),
-                pedido.getCliente().getNome(),
-                pedido.getEnderecoEntrega(),
-                pedido.getPrazoEntrega(),
                 pedido.getStatus(),
                 pedido.getStatus().getRotulo(),
-                pedido.isAtrasado(hoje),
-                pedido.getCriadoEm(),
+                pedido.getPrazoEntrega(),
                 agora,
                 INTERVALO_POLLING_SEGUNDOS,
-                itens,
-                timeline);
+                pedido.getHistorico().stream().map(Etapa::from).toList());
     }
 }

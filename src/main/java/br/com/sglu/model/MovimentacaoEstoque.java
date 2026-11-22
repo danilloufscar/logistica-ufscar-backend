@@ -5,6 +5,10 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Objects;
 
+/**
+ * Movimentação de estoque. As fábricas registram o saldo atual do produto como "saldo após",
+ * por isso devem ser chamadas depois de o produto aplicar a entrada, a saída ou o ajuste.
+ */
 @Entity
 @Table(name = "movimentacoes_estoque")
 public class MovimentacaoEstoque {
@@ -37,6 +41,10 @@ public class MovimentacaoEstoque {
     @JoinColumn(name = "pedido_id", updatable = false)
     private Pedido pedido;
 
+    /** Saldo do produto logo após esta movimentação (RF12). */
+    @Column(name = "saldo_apos", updatable = false)
+    private Integer saldoApos;
+
     protected MovimentacaoEstoque() {
     }
 
@@ -51,6 +59,7 @@ public class MovimentacaoEstoque {
         movimentacao.data = Objects.requireNonNull(data);
         movimentacao.usuario = Objects.requireNonNull(usuario);
         movimentacao.registradoEm = Objects.requireNonNull(agora);
+        movimentacao.saldoApos = produto.getSaldo();
         return movimentacao;
     }
 
@@ -84,6 +93,7 @@ public class MovimentacaoEstoque {
         movimentacao.usuario = Objects.requireNonNull(usuario);
         movimentacao.registradoEm = Objects.requireNonNull(agora);
         movimentacao.justificativa = Objects.requireNonNull(justificativa);
+        movimentacao.saldoApos = produto.getSaldo();
         return movimentacao;
     }
 
@@ -117,5 +127,9 @@ public class MovimentacaoEstoque {
 
     public Usuario getUsuario() {
         return usuario;
+    }
+
+    public Integer getSaldoApos() {
+        return saldoApos;
     }
 }

@@ -8,6 +8,7 @@ import br.com.sglu.model.Cliente;
 import br.com.sglu.model.Perfil;
 import br.com.sglu.model.Produto;
 import br.com.sglu.model.StatusPedido;
+import br.com.sglu.model.TipoOcorrencia;
 import br.com.sglu.model.Usuario;
 import br.com.sglu.repository.ClienteRepository;
 import br.com.sglu.repository.ProdutoRepository;
@@ -108,7 +109,7 @@ class PedidoTimelineIntegrationTest {
         Long pedidoId = json.readTree(criacaoResp).get("id").asLong();
 
         // 2. Registra uma ocorrência antes da separação (pelo Operador)
-        var ocorrencia1 = new OcorrenciaPedidoRequest("Cliente solicitou entrega no período da manhã");
+        var ocorrencia1 = new OcorrenciaPedidoRequest(TipoOcorrencia.ATRASO, "Cliente solicitou entrega no período da manhã", LocalDate.now());
         mvc.perform(post("/api/pedidos/{id}/ocorrencias", pedidoId)
                 .header("Authorization", "Bearer " + operadorToken)
                 .contentType(MediaType.APPLICATION_JSON)
@@ -124,7 +125,7 @@ class PedidoTimelineIntegrationTest {
                 .andExpect(status().isOk());
 
         // 4. Registra segunda ocorrência durante a separação (pelo Admin)
-        var ocorrencia2 = new OcorrenciaPedidoRequest("Item conferido e embalado com proteção extra");
+        var ocorrencia2 = new OcorrenciaPedidoRequest(TipoOcorrencia.AVARIA, "Item conferido e embalado com proteção extra", LocalDate.now());
         mvc.perform(post("/api/pedidos/{id}/ocorrencias", pedidoId)
                 .header("Authorization", "Bearer " + adminToken)
                 .contentType(MediaType.APPLICATION_JSON)

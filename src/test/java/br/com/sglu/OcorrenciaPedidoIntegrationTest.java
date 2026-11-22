@@ -179,4 +179,55 @@ class OcorrenciaPedidoIntegrationTest {
                 .content(json.writeValueAsString(req)))
                 .andExpect(status().is4xxClientError());
     }
-}
+
+    @Test
+    void rejeitaDescricaoVaziaLongaTipoInvalidoESemAutenticacaoSemGravar() throws Exception {
+        Long id = criarPedidoEmSeparacao();
+        for (var dados : List.of(
+                Map.of("tipo", "ATRASO", "descricao", "   ", "data", "2026-11-15"),
+                Map.of("tipo", "ATRASO", "descricao", "x".repeat(501), "data", "2026-11-15"),
+                Map.of("tipo", "INVALIDO", "descricao", "Teste", "data", "2026-11-15"))) {
+            mvc.perform(post("/api/pedidos/{id}/ocorrencias", id)
+                    .header("Authorization", "Bearer " + operadorToken)
+                    .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(dados)))
+                    .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/pedidos/{id}/ocorrencias", id)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(new OcorrenciaPedidoRequest(TipoOcorrencia.AVARIA, "Teste", LocalDate.now()))))
+                .andExpect(status().isUnauthorized());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                "select count(*) from pedido_ocorrencias where pedido_id = ?", Long.class, id)).isZero();
+    }
+    @Autowired org.springframework.transaction.PlatformTransactionManager transactionManager;
+
+    @Test
+    void ocorrenciaAguardaEncerramentoConcorrenteENaoGravaDepoisDeCancelado() throws Exception {
+        Long id = criarPedidoEmSeparacao();
+        var tx = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
+        var iniciou = new java.util.concurrent.CountDownLatch(1);
+        try (var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var futuro = new java.util.concurrent.atomic.AtomicReference<java.util.concurrent.Future<Integer>>();
+            tx.executeWithoutResult(estado -> {
+                jdbc.queryForObject("select id from pedidos where id = ? for update", Long.class, id);
+                futuro.set(executor.submit(() -> {
+                    iniciou.countDown();
+                    return mvc.perform(post("/api/pedidos/{id}/ocorrencias", id)
+                            .header("Authorization", "Bearer " + operadorToken)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsString(new OcorrenciaPedidoRequest(
+                                    TipoOcorrencia.ATRASO, "Concorrência", LocalDate.now()))))
+                            .andReturn().getResponse().getStatus();
+                }));
+                try {
+                    org.assertj.core.api.Assertions.assertThat(iniciou.await(5, java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                    org.assertj.core.api.Assertions.assertThatThrownBy(() -> futuro.get().get(300, java.util.concurrent.TimeUnit.MILLISECONDS))
+                            .isInstanceOf(java.util.concurrent.TimeoutException.class);
+                } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IllegalStateException(e); }
+                jdbc.update("update pedidos set status = 'CANCELADO' where id = ?", id);
+            });
+            org.assertj.core.api.Assertions.assertThat(futuro.get().get(10, java.util.concurrent.TimeUnit.SECONDS)).isEqualTo(409);
+            org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject(
+                    "select count(*) from pedido_ocorrencias where pedido_id = ?", Long.class, id)).isZero();
+        }
+    }}

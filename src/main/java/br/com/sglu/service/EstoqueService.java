@@ -14,9 +14,10 @@ import br.com.sglu.repository.MovimentacaoEstoqueRepository;
 import br.com.sglu.repository.ProdutoRepository;
 import br.com.sglu.repository.UsuarioRepository;
 import java.time.Clock;
-import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Map;
 import java.util.List;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -84,17 +85,30 @@ public class EstoqueService {
 
                 produto.ajustarSaldo(quantidadeContada);
 
+                var agora = clock.instant();
                 var movimentacao = MovimentacaoEstoque.ajuste(
                                 produto,
                                 tipo,
                                 quantidadeAjuste,
-                                LocalDate.now(clock),
+                                agora.atZone(ZoneId.of("America/Sao_Paulo")).toLocalDate(),
                                 usuario,
-                                clock.instant(),
+                                agora,
                                 dados.justificativa().trim());
 
                 var salva = movimentacoes.saveAndFlush(movimentacao);
                 return AjusteEstoqueResponse.from(salva, saldoAnterior, quantidadeContada);
+        }
+
+        static final int MAXIMO_ULTIMAS_ENTRADAS = 50;
+
+        /** Últimas entradas de todos os produtos (tela de registro de entrada); o limite fica entre 1 e 50. */
+        @Transactional(readOnly = true)
+        public List<MovimentacaoEstoqueResponse> listarUltimasEntradas(int limite) {
+                int quantidade = Math.clamp(limite, 1, MAXIMO_ULTIMAS_ENTRADAS);
+                return movimentacoes.buscarRecentesPorTipo(TipoMovimentacaoEstoque.ENTRADA, PageRequest.of(0, quantidade))
+                                .stream()
+                                .map(MovimentacaoEstoqueResponse::from)
+                                .toList();
         }
 
         @Transactional(readOnly = true)

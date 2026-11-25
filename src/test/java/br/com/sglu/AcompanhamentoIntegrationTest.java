@@ -114,7 +114,7 @@ class AcompanhamentoIntegrationTest {
                 .andExpect(jsonPath("$.codigo").value(codigo))
                 .andExpect(jsonPath("$.status").value("CRIADO"))
                 .andExpect(jsonPath("$.prazoEntrega").value(pedidoReq.prazoEntrega().toString()))
-                .andExpect(jsonPath("$.intervaloAtualizacaoSegundos").value(30))
+                .andExpect(jsonPath("$.intervaloAtualizacaoSegundos").value(10))
                 .andExpect(jsonPath("$.timeline.length()").value(1))
                 .andExpect(jsonPath("$.timeline[0].status").value("CRIADO"))
                 .andExpect(jsonPath("$.timeline[0].dataHora").isNotEmpty())

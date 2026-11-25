@@ -358,7 +358,7 @@ class PedidoServiceTest {
         assertThat(resposta.statusRotulo()).isEqualTo("Em separação");
         assertThat(resposta.prazoEntrega()).isEqualTo(HOJE.plusDays(3));
         assertThat(resposta.atualizadoEm()).isEqualTo(AGORA);
-        assertThat(resposta.intervaloAtualizacaoSegundos()).isEqualTo(30);
+        assertThat(resposta.intervaloAtualizacaoSegundos()).isEqualTo(10);
         assertThat(resposta.timeline())
                 .extracting(AcompanhamentoPedidoResponse.Etapa::status, AcompanhamentoPedidoResponse.Etapa::dataHora)
                 .containsExactly(tuple(CRIADO, AGORA), tuple(EM_SEPARACAO, AGORA.plusSeconds(60)));

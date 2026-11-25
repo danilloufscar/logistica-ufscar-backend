@@ -267,3 +267,5 @@ O atraso é calculado na leitura pelo calendário de America/Sao_Paulo: prazo an
 O acompanhamento retorna dados atuais e intervalo de 30 segundos, com no-store. A interface consulta novamente o detalhe/timeline e o portal sem recarregar a página. A suíte verifica prazo hoje/futuro/vencido e encerrados; a homologação integrada mede a propagação com PostgreSQL e navegador.
 
 Integração de 25/11: preservados a tela de entregas, o contrato público restrito e o horário da última consulta da main. Tratamento local de timeout e cancelamento restaurado. Intervalo de 30 segundos preservado; o ajuste do limite de propagação será tratado separadamente.
+
+RF16 / RNF04: consultas periódicas a cada 10 segundos, com timeout de 8 segundos no front e atualização ao retornar à aba. A margem inclui rede e renderização; indisponibilidade de rede/servidor e suspensão da aba impedem garantir o prazo de 30 segundos. O contrato público informa o intervalo de 10 segundos.

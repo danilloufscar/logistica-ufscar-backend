@@ -19,7 +19,7 @@ public record AcompanhamentoPedidoResponse(
         Instant atualizadoEm,
         int intervaloAtualizacaoSegundos,
         List<Etapa> timeline) {
-    public static final int INTERVALO_POLLING_SEGUNDOS = 30;
+    public static final int INTERVALO_POLLING_SEGUNDOS = 10;
 
     public record Etapa(StatusPedido status, String statusRotulo, Instant dataHora) {
         static Etapa from(HistoricoStatusPedido registro) {

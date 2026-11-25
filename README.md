@@ -259,3 +259,11 @@ Para validar: registre entrada de 10, ajuste para 7, depois 12 e depois zero. Co
 Administradores e Operadores consultam `GET /api/pedidos/{id}/timeline` e registram ocorrências em `POST /api/pedidos/{id}/ocorrencias`. O corpo contém tipo (ATRASO, AVARIA ou DESTINATARIO_AUSENTE), descricao obrigatória com até 500 caracteres e data obrigatória. O autor vem da sessão; o instante do registro vem do servidor. O registro preserva status e estoque. Pedidos entregues/cancelados recusam novas ocorrências com 409. O bloqueio transacional do pedido serializa ocorrências com avanço/cancelamento.
 
 A timeline reúne status e ocorrências em ordem cronológica de registro, com autoria e data da ocorrência quando aplicável. Testes incluem validações, autenticação, preservação do status e registro concorrente com encerramento.
+
+## RF15 e RF16 — atraso e atualização
+
+O atraso é calculado na leitura pelo calendário de America/Sao_Paulo: prazo anterior a hoje e status diferente de ENTREGUE/CANCELADO. Vencer hoje não é atraso. Lista, detalhe e acompanhamento interno usam a mesma regra de domínio; a ocorrência ATRASO não muda o status nem substitui o cálculo do prazo.
+
+O acompanhamento retorna dados atuais e intervalo de 30 segundos, com no-store. A interface consulta novamente o detalhe/timeline e o portal sem recarregar a página. A suíte verifica prazo hoje/futuro/vencido e encerrados; a homologação integrada mede a propagação com PostgreSQL e navegador.
+
+Integração de 25/11: preservados a tela de entregas, o contrato público restrito e o horário da última consulta da main. Tratamento local de timeout e cancelamento restaurado. Intervalo de 30 segundos preservado; o ajuste do limite de propagação será tratado separadamente.

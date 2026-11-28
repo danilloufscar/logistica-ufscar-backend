@@ -259,3 +259,34 @@ Para validar: registre entrada de 10, ajuste para 7, depois 12 e depois zero. Co
 Administradores e Operadores consultam `GET /api/pedidos/{id}/timeline` e registram ocorrências em `POST /api/pedidos/{id}/ocorrencias`. O corpo contém tipo (ATRASO, AVARIA ou DESTINATARIO_AUSENTE), descricao obrigatória com até 500 caracteres e data obrigatória. O autor vem da sessão; o instante do registro vem do servidor. O registro preserva status e estoque. Pedidos entregues/cancelados recusam novas ocorrências com 409. O bloqueio transacional do pedido serializa ocorrências com avanço/cancelamento.
 
 A timeline reúne status e ocorrências em ordem cronológica de registro, com autoria e data da ocorrência quando aplicável. Testes incluem validações, autenticação, preservação do status e registro concorrente com encerramento.
+
+## RF15 e RF16 — atraso e atualização
+
+O atraso é calculado na leitura pelo calendário de America/Sao_Paulo: prazo anterior a hoje e status diferente de ENTREGUE/CANCELADO. Vencer hoje não é atraso. Lista, detalhe e acompanhamento interno usam a mesma regra de domínio; a ocorrência ATRASO não muda o status nem substitui o cálculo do prazo.
+
+O acompanhamento retorna dados atuais e intervalo de 30 segundos, com no-store. A interface consulta novamente o detalhe/timeline e o portal sem recarregar a página. A suíte verifica prazo hoje/futuro/vencido e encerrados; a homologação integrada mede a propagação com PostgreSQL e navegador.
+
+Integração de 25/11: preservados a tela de entregas, o contrato público restrito e o horário da última consulta da main. Tratamento local de timeout e cancelamento restaurado. Intervalo de 30 segundos preservado; o ajuste do limite de propagação será tratado separadamente.
+
+RF16 / RNF04: consultas periódicas a cada 10 segundos, com timeout de 8 segundos no front e atualização ao retornar à aba. A margem inclui rede e renderização; indisponibilidade de rede/servidor e suspensão da aba impedem garantir o prazo de 30 segundos. O contrato público informa o intervalo de 10 segundos.
+
+## RF18 / RF19 — Relatórios de desempenho
+
+Acesso exclusivo do Administrador. Frontend: `/relatorios`. API:
+`GET /api/relatorios/desempenho?inicio=2026-11-01&fim=2026-11-30`
+com Bearer token. Datas obrigatórias em AAAA-MM-DD; início posterior ao fim resulta em HTTP 400.
+Operador recebe 403; sem autenticação, 401.
+
+Interpretação temporal adotada para o período escolhido (o enunciado não define a data-base de RF18):
+- Quantidade por status: pedidos **criados** no período, agrupados pelo **status atual**. Os cinco status não cancelados são retornados, inclusive com zero.
+- Pontualidade: pedidos **entregues** no período, independentemente da criação. Percentual = entregas no prazo / total de entregas do período × 100, arredondado para duas casas.
+- RN07: cancelados ficam fora dos dois indicadores. A data do registro ENTREGUE é comparada ao prazo, incluindo o próprio dia.
+- Todas as datas usam America/Sao_Paulo. Os dois dias do filtro são inclusivos.
+- Sem entregas, percentualNoPrazo é null; a tela informa que não há base de cálculo. Zero por cento é reservado para entregas existentes, todas atrasadas.
+- As contagens e entregas são consultadas em uma transação de leitura consistente. Não são expostos clientes, itens ou dados pessoais.
+- RF19: tempoMedioEntregaDias é a média das durações entre criação e registro ENTREGUE, considerando as mesmas entregas do período da pontualidade. Usa dias de 24 horas, inclui frações e arredonda somente a média final para duas casas. Sem entregas retorna null; uma entrega imediata pode resultar em 0,00 dia.
+
+Validação automatizada do RF18/RF19: RelatorioIntegrationTest e RelatorioServiceTest verificam autorização, filtros, limites de data/fuso, cancelados, arredondamento, períodos inválidos e vazio. A tela permite repetir consultas com falha e descarta respostas do período anterior ao trocar o filtro.
+
+
+Validação em 26/11/2026: suíte completa com 198 testes aprovados; JaCoCo aprovado (RelatorioService com 100% das linhas e decisões cobertas). Frontend passou em TypeScript, build e lint. O cenário integrado usa PostgreSQL temporário e dados fictícios, com verificação da tela em desktop e celular, filtros, período vazio, falha/recuperação e acesso exclusivo do Administrador.

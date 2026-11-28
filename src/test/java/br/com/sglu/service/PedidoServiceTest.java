@@ -358,7 +358,7 @@ class PedidoServiceTest {
         assertThat(resposta.statusRotulo()).isEqualTo("Em separação");
         assertThat(resposta.prazoEntrega()).isEqualTo(HOJE.plusDays(3));
         assertThat(resposta.atualizadoEm()).isEqualTo(AGORA);
-        assertThat(resposta.intervaloAtualizacaoSegundos()).isEqualTo(30);
+        assertThat(resposta.intervaloAtualizacaoSegundos()).isEqualTo(10);
         assertThat(resposta.timeline())
                 .extracting(AcompanhamentoPedidoResponse.Etapa::status, AcompanhamentoPedidoResponse.Etapa::dataHora)
                 .containsExactly(tuple(CRIADO, AGORA), tuple(EM_SEPARACAO, AGORA.plusSeconds(60)));
@@ -398,4 +398,16 @@ class PedidoServiceTest {
         ReflectionTestUtils.setField(entidade, "id", id);
         return entidade;
     }
-}
+    @Test
+    void detalheInternoDestacaVencidoMasNaoHojeFuturoOuEncerrados() {
+        var hoje = pedido(HOJE);
+        var futuro = pedido(HOJE.plusDays(1));
+        var vencido = pedido(HOJE.minusDays(1));
+        var entregue = pedido(HOJE.minusDays(1));
+        avancarAte(entregue, ENTREGUE);
+        var cancelado = pedido(HOJE.minusDays(1));
+        cancelado.cancelar(usuario, AGORA);
+        assertThat(List.of(hoje, futuro, vencido, entregue, cancelado).stream()
+                .map(p -> PedidoResponse.from(p, HOJE).atrasado()))
+                .containsExactly(false, false, true, false, false);
+    }}

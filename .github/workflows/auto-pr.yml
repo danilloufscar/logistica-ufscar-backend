@@ -1,0 +1,54 @@
+name: Abrir PR automaticamente
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: auto-pr-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Criar PR para main ou reutilizar o existente
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const branch = context.ref.replace(/^refs\/heads\//, '');
+            if (branch === 'main' || context.payload.deleted) return;
+
+            const { data: existing } = await github.rest.pulls.list({
+              owner, repo, state: 'open', base: 'main', head: owner + ':' + branch
+            });
+            if (existing.length) {
+              core.notice('PR existente: ' + existing[0].html_url);
+              return;
+            }
+
+            const { data: comparison } = await github.rest.repos.compareCommitsWithBasehead({
+              owner, repo, basehead: 'main...' + branch
+            });
+            if (comparison.ahead_by === 0) {
+              core.notice('Branch sem commits novos para main.');
+              return;
+            }
+
+            const title = (context.payload.head_commit?.message?.split('\n')[0] || branch).slice(0, 240);
+            const { data: pr } = await github.rest.pulls.create({
+              owner, repo, base: 'main', head: branch, title,
+              body: [
+                'PR aberto automaticamente após push na branch ' + branch + '.',
+                '',
+                'Os próximos pushes nesta branch atualizam este mesmo PR.',
+                'Confira os checks do CI e revise as alterações antes do merge em main.'
+              ].join('\n')
+            });
+            core.notice('PR criado: ' + pr.html_url);
